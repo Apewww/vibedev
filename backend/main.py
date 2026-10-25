@@ -469,21 +469,76 @@ async def generate_prd(request: Request):
     idea = plan.get("idea")
     features = plan.get("features", [])
     
-    prompt = f"""Kamu adalah Senior Product Manager & Software Architect.
-Tulis Product Requirement Document (PRD) yang komprehensif, terstruktur, dan siap pakai untuk AI Coding Agent (Cursor, Claude Code, Windsurf).
-Ide: {idea}
-Fitur Inti: {json.dumps(features, ensure_ascii=False)}
+    prompt = """Kamu adalah Senior Product Manager & Principal Software Architect.
+Tulis Product Requirement Document (PRD) yang komprehensif, terstruktur, presisi tinggi, dan siap dieksekusi oleh AI Coding Agent (Cursor, Claude Code, Windsurf).
+Nama Proyek: __TITLE__
+Ide Dasar: __IDEA__
+Pohon Modul Fitur: __FEATURES__
 
-Gunakan format Markdown lengkap dengan struktur berikut:
-# PRD: {plan.get("title", "Project Plan")}
-## 1. Executive Summary & Goals
-## 2. User Personas & Problem Statement
-## 3. Architecture & Tech Stack
-## 4. Detailed Feature Specifications
-## 5. Data Flow & API Contracts
-## 6. Database Schema (PostgreSQL DDL / Prisma)
-## 7. Implementation Roadmap & Acceptance Criteria
-"""
+Wajib ikuti struktur 7 bab standar berikut secara presisi:
+# PRD — __TITLE__
+
+## 1. Overview
+Ringkasan eksekutif, latar belakang masalah, nilai proposisi, dan tujuan utama aplikasi.
+
+## 2. Requirements
+### 2.1 Fungsional
+Rincian kapabilitas spesifik yang harus dapat dilakukan oleh pengguna dan sistem.
+### 2.2 Non-Fungsional
+Aspek performa (<200ms latency), keamanan (JWT/OAuth & sanitasi input), ketersediaan, dan reliabilitas.
+
+## 3. Core Features
+Pecah setiap modul fitur dari input di atas menjadi spesifikasi teknis mendalam dengan sub-fitur dan acceptance criteria.
+Format tiap fitur:
+### 3.1 [Nama Modul]
+- Deskripsi & Nilai Tambah
+- Sub-Fitur & Spesifikasi Teknis
+- Validasi & Edge Cases
+
+## 4. User Flow
+Langkah-langkah interaksi pengguna end-to-end dari landing page/auth hingga eksekusi alur utama dan umpan balik sistem.
+
+## 5. Architecture
+Jelaskan pola arsitektur sistem, pemisahan layer client-server, dan alur pemrosesan data.
+WAJIB sertakan diagram sequence Mermaid yang valid dan detail:
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User as User / Visitor
+    participant Client as Browser Client
+    participant Server as App Server (Next.js / FastAPI)
+    participant DB as PostgreSQL Database
+    participant External as External Service / API
+
+    User->>Client: Akses Aplikasi / Input Form
+    Client->>Server: HTTP Request / Server Action
+    Server->>DB: Query / Simpan Data
+    DB-->>Server: Return Data Record
+    Server-->>Client: Return JSON / Hydration HTML
+    Client-->>User: Tampilkan Feedback UI
+```
+
+## 6. Database Schema
+Penyimpanan relational terpusat yang terstruktur dan hemat query.
+WAJIB sertakan diagram ERD Mermaid yang valid serta tabel ringkasan entitas & kolom kunci (Nama Kolom, Tipe Data, Keterangan).
+Contoh:
+```mermaid
+erDiagram
+    USERS ||--o{ ITEMS : owns
+    USERS {
+        uuid id PK
+        string email
+        string name
+        timestamp created_at
+    }
+```
+
+## 7. Tech Stack & Constraints
+### 7.1 Pilihan Teknologi
+Frontend framework, Backend, Database, Styling, dan Layanan Pihak Ketiga.
+### 7.2 Batasan Teknis & Panduan Coding Agent
+Instruksi tegas bagi coding agent: wajib memprioritaskan pembuatan Frontend Mock UI terlebih dahulu sebelum integrasi backend, penanganan error terpusat, dan penulisan kode modular.
+""".replace("__TITLE__", plan.get("title", "Project Plan")).replace("__IDEA__", str(idea)).replace("__FEATURES__", json.dumps(features, ensure_ascii=False))
 
     prd_md = call_llm([{"role": "user", "content": prompt}], response_json=False)
     plan["generatedPrd"] = prd_md

@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  ArrowRight, Copy, Check, ArrowLeft, RefreshCw, 
+  ArrowRight, ArrowLeft, RefreshCw, 
   Menu, Sparkles, Terminal, FileText, Cpu, 
-  MessageSquare, Layers, Box,
+  Layers, Box,
   User as UserIcon, X, ShieldAlert
 } from 'lucide-react';
-import { marked } from 'marked';
+
 import { VibeJourney } from './components/VibeJourney';
 import { PlanSidebar, type SavedPlan } from './components/PlanSidebar';
 import { TaskKanban, type TaskItem } from './components/TaskKanban';
 import { FlowMap, type FeatureNode } from './components/FlowMap';
 import { AgentPromptModal } from './components/AgentPromptModal';
+import { PrdPreview } from './components/PrdPreview';
+
 
 interface QuestionItem {
   id: string;
@@ -60,8 +62,6 @@ export default function App() {
   const [prdMarkdown, setPrdMarkdown] = useState<string>('');
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [loadingFinalPipeline, setLoadingFinalPipeline] = useState<boolean>(false);
-  const [copiedPrd, setCopiedPrd] = useState<boolean>(false);
-  const [showRevision, setShowRevision] = useState<boolean>(false);
   const [revisionPrompt, setRevisionPrompt] = useState<string>('');
   const [revisingPrd, setRevisingPrd] = useState<boolean>(false);
   const [specViewMode, setSpecViewMode] = useState<'canvas' | 'grid'>('canvas');
@@ -425,16 +425,19 @@ export default function App() {
   };
 
   // Revise PRD via AI prompt
-  const handleRevisePRD = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!revisionPrompt.trim()) return;
+  const handleRevisePRD = async (eOrInstruction?: React.FormEvent | string) => {
+    if (eOrInstruction && typeof eOrInstruction !== 'string' && 'preventDefault' in eOrInstruction) {
+      eOrInstruction.preventDefault();
+    }
+    const instruction = typeof eOrInstruction === 'string' ? eOrInstruction : revisionPrompt;
+    if (!instruction.trim()) return;
 
     setRevisingPrd(true);
     try {
       const res = await fetch('/api/plan/revise', {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ planId, instruction: revisionPrompt })
+        body: JSON.stringify({ planId, instruction })
       });
       if (res.status === 401) {
         setShowAuthModal(true);
@@ -449,7 +452,6 @@ export default function App() {
       if (data.content) {
         setPrdMarkdown(data.content);
         setRevisionPrompt('');
-        setShowRevision(false);
       }
       fetchSessionAndCredits();
     } catch (e) {
@@ -471,12 +473,6 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-  };
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(prdMarkdown);
-    setCopiedPrd(true);
-    setTimeout(() => setCopiedPrd(false), 2000);
   };
 
   return (
@@ -607,8 +603,8 @@ export default function App() {
         </div>
       )}
 
-      {/* Main Responsive Canvas */}
-      <main className="flex-1 flex flex-col p-4 sm:p-8 max-w-5xl mx-auto w-full">
+      {/* Main Responsive Canvas - Full Width */}
+      <main className="flex-1 flex flex-col w-full px-4 sm:px-6 lg:px-8 py-5">
         {/* Mobile Journey Stepper Bar */}
         <div className="sm:hidden mb-4">
           <VibeJourney
@@ -846,95 +842,48 @@ export default function App() {
         {step === 3 && (
           <div className="flex flex-col space-y-5 animate-in fade-in duration-300">
             {/* Stage Toolbar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#27272a]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3.5 border-b border-[#27272a]">
               <div>
                 <span className="text-xs font-mono uppercase tracking-wider text-[#ff5c20] font-bold">Tahap 3: Dokumen PRD + Task</span>
                 <h2 className="text-xl sm:text-2xl font-bold text-white mt-0.5">{title || 'Spesifikasi & Pipeline Task'}</h2>
               </div>
 
               {/* Subtabs Switcher & Agent Bridge Button */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="inline-flex p-1 bg-[#121215] border border-[#27272a] rounded-lg">
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <div className="inline-flex p-1 bg-[#121215] border border-[#27272a] rounded-xl shadow-inner">
                   <button
                     onClick={() => setStep3SubTab('prd')}
-                    className={`px-3 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
-                      step3SubTab === 'prd' ? 'bg-[#ff5c20] text-white' : 'text-zinc-400 hover:text-white'
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      step3SubTab === 'prd' ? 'bg-[#ff5c20] text-white shadow-sm' : 'text-zinc-400 hover:text-white'
                     }`}
                   >
-                    <FileText className="w-3.5 h-3.5 inline mr-1" /> Dokumen PRD
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Dokumen PRD</span>
                   </button>
                   <button
                     onClick={() => setStep3SubTab('tasks')}
-                    className={`px-3 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
-                      step3SubTab === 'tasks' ? 'bg-[#ff5c20] text-white' : 'text-zinc-400 hover:text-white'
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      step3SubTab === 'tasks' ? 'bg-[#ff5c20] text-white shadow-sm' : 'text-zinc-400 hover:text-white'
                     }`}
                   >
-                    <Layers className="w-3.5 h-3.5 inline mr-1" /> Task Pipeline ({tasks.length})
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Task Pipeline ({tasks.length})</span>
                   </button>
                 </div>
 
-                {step3SubTab === 'prd' && (
-                  <>
-                    <button
-                      onClick={() => setShowRevision(!showRevision)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#27272a] bg-[#121215] hover:bg-[#18181c] text-zinc-300 hover:text-white text-xs font-medium transition-colors cursor-pointer"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Revisi AI</span>
-                    </button>
-
-                    <button
-                      onClick={copyToClipboard}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#27272a] bg-[#121215] hover:bg-[#18181c] text-zinc-300 hover:text-white text-xs font-medium transition-colors cursor-pointer"
-                    >
-                      {copiedPrd ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedPrd ? 'Tersalin' : 'Salin PRD'}</span>
-                    </button>
-                  </>
-                )}
-
                 <button
                   onClick={() => setShowAgentPrompt(true)}
-                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold transition-all shadow-md shadow-[#ff5c20]/25 cursor-pointer"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-[#ff5c20] to-[#e04f18] text-white text-xs font-bold transition-all shadow-md shadow-[#ff5c20]/25 cursor-pointer"
                 >
-                  <Cpu className="w-4 h-4" />
+                  <Cpu className="w-3.5 h-3.5" />
                   <span>Hubungkan AI Agent</span>
                 </button>
               </div>
             </div>
 
-            {/* Expandable Revision Form */}
-            {showRevision && step3SubTab === 'prd' && (
-              <form onSubmit={handleRevisePRD} className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5" /> Instruksi AI Revisi PRD
-                  </span>
-                  <button type="button" onClick={() => setShowRevision(false)} className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer">
-                    Tutup
-                  </button>
-                </div>
-                <textarea
-                  rows={2}
-                  value={revisionPrompt}
-                  onChange={(e) => setRevisionPrompt(e.target.value)}
-                  placeholder="Contoh: Tambahkan webhook Midtrans untuk verifikasi otomatis status pembayaran..."
-                  className="w-full bg-[#121215] border border-[#27272a] focus:border-amber-500 rounded-lg p-2.5 text-xs text-white placeholder-zinc-600 outline-none"
-                  disabled={revisingPrd}
-                />
-                <button
-                  type="submit"
-                  disabled={revisingPrd || !revisionPrompt.trim()}
-                  className="px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-black text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
-                >
-                  {revisingPrd ? 'Memproses Revisi...' : 'Terapkan Revisi'}
-                </button>
-              </form>
-            )}
-
-            {/* Sub-tab 1: DOKUMEN PRD */}
+            {/* Sub-tab 1: DOKUMEN PRD WITH MERMAID & OUTLINE */}
             {step3SubTab === 'prd' && (
-              <div className="relative rounded-xl border border-[#27272a] bg-[#121215] p-6 sm:p-8 shadow-2xl">
+              <div className="w-full">
                 {loadingFinalPipeline ? (
                   <div className="py-24 text-center space-y-3">
                     <RefreshCw className="w-8 h-8 text-[#ff5c20] animate-spin mx-auto" />
@@ -942,15 +891,12 @@ export default function App() {
                     <p className="text-xs text-zinc-500">Menganalisis DDL database, arsitektur modul, dan spesifikasi API.</p>
                   </div>
                 ) : (
-                  <div 
-                    className="prose prose-invert max-w-none text-xs sm:text-sm leading-relaxed 
-                      prose-headings:text-zinc-100 prose-headings:font-bold prose-headings:tracking-tight 
-                      prose-h1:text-xl sm:prose-h1:text-2xl prose-h1:border-b prose-h1:border-zinc-800 prose-h1:pb-2
-                      prose-h2:text-base sm:prose-h2:text-lg prose-h2:text-[#ff7842] prose-h2:mt-6 prose-h2:mb-3
-                      prose-p:text-zinc-300 prose-ul:text-zinc-300 prose-li:my-1
-                      prose-pre:bg-[#09090b] prose-pre:border prose-pre:border-[#27272a] prose-pre:rounded-lg
-                      prose-code:text-[#ff8452] prose-code:font-mono prose-code:text-[11px]"
-                    dangerouslySetInnerHTML={{ __html: marked.parse(prdMarkdown || '# PRD Kosong') as string }}
+                  <PrdPreview
+                    title={title}
+                    content={prdMarkdown}
+                    onRevise={(inst) => handleRevisePRD(inst)}
+                    revising={revisingPrd}
+                    onConnectAgent={() => setShowAgentPrompt(true)}
                   />
                 )}
               </div>
