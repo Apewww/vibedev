@@ -517,12 +517,34 @@ Format tiap fitur:
 Langkah-langkah interaksi pengguna end-to-end dari landing page/auth hingga eksekusi alur utama dan umpan balik sistem.
 
 ## 5. Architecture
-Jelaskan pola arsitektur sistem, pemisahan layer client-server, dan alur pemrosesan data.
-WAJIB sertakan diagram sequence Mermaid yang valid dan detail:
+Pola arsitektur sistem, pemisahan layer client-server, dan alur pemrosesan data.
+DILARANG KERAS membuat diagram arsitektur menggunakan kotak teks ASCII (seperti [ ... ] ── | ▼).
+SEMUA visualisasi arsitektur dan alur WAJIB menggunakan blok ```mermaid resmi!
+
+WAJIB sertakan DUA diagram Mermaid yang valid dan detail:
+
+### 5.1 Diagram Arsitektur Sistem (Mermaid Flowchart)
+```mermaid
+flowchart TD
+    Client["🌐 Client Browser (Next.js / Mobile Client)"] --> CDN["⚡ Edge CDN & Reverse Proxy (Vercel / Cloudflare)"]
+    CDN --> App["🚀 App Server: Next.js App Router (RSC & API)"]
+    
+    subgraph AppLayers["Pemisahan Layer Aplikasi"]
+        Pres["🎨 Presentation (React Server Components, TailwindCSS)"]
+        Logic["⚙️ Application Logic (Server Actions, Route Handlers)"]
+        Sec["🛡️ Security Middleware (Rate Limiter, Session Guard, Sanitizer)"]
+    end
+    App --- AppLayers
+    
+    AppLayers --> DB[("🗄️ Database: PostgreSQL (Prisma / Drizzle ORM)")]
+    AppLayers --> Ext["🔗 Integrasi Eksternal (GitHub API / Object Storage S3)"]
+```
+
+### 5.2 Diagram Alur Data Interaksi (Mermaid Sequence Diagram)
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as User / Visitor
+    actor User as Pengunjung / Recruiter
     participant Client as Browser Client
     participant Server as App Server (Next.js / FastAPI)
     participant DB as PostgreSQL Database
@@ -535,6 +557,13 @@ sequenceDiagram
     Server-->>Client: Return JSON / Hydration HTML
     Client-->>User: Tampilkan Feedback UI
 ```
+
+### 5.3 Daftar Endpoint API Utama
+Tabel GFM Endpoint API:
+| HTTP Method | Path Endpoint | Fungsi Bisnis | Tingkat Akses |
+|---|---|---|---|
+| `GET` | `/api/v1/projects` | Mengambil seluruh katalog proyek publik | Publik |
+| `POST` | `/api/v1/projects` | Menambahkan studi kasus proyek baru | Terproteksi (Admin) |
 
 ## 6. Database Schema
 Penyimpanan relational terpusat yang terstruktur dan hemat query.
@@ -578,8 +607,10 @@ Instruksi tegas bagi coding agent (Cursor, Windsurf, Claude Code):
             "Tugas utamamu adalah menyusun dokumen Product Requirement Document (PRD) yang sangat komprehensif, terperinci, "
             "dan berstandar industri dalam format MARKDOWN MURNI (GitHub Flavored Markdown). "
             "DILARANG KERAS mengembalikan kode HTML mentah (<!DOCTYPE html>) atau file tunggal mockup. "
+            "DILARANG KERAS membuat diagram arsitektur menggunakan teks ASCII (seperti [ ... ] ── | ▼). "
+            "SEMUA diagram arsitektur dan alur WAJIB ditulis dalam blok ```mermaid resmi (flowchart TD untuk arsitektur sistem, sequenceDiagram untuk alur data, dan erDiagram untuk skema database). "
             "DILARANG KERAS bersikap malas atau menerapkan pola 'ponytail' / 'YAGNI shortcut' yang memangkas dokumen PRD. "
-            "Kamu WAJIB menuliskan dokumen spesifikasi PRD utuh dengan 7 bab lengkap, diagram Mermaid valid (Sequence Diagram & ERD), "
+            "Kamu WAJIB menuliskan dokumen spesifikasi PRD utuh dengan 7 bab lengkap, diagram Mermaid valid, "
             "tabel matriks kebutuhan fungsional (FR-001...), dan kamus data database terperinci."
         )
     }

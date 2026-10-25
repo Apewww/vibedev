@@ -107,46 +107,128 @@ function normalizeTextChunk(chunk: string): string {
   return text;
 }
 
+// Detect and convert ASCII box-and-arrow architecture diagrams into valid Mermaid flowcharts
+function tryConvertAsciiToMermaid(code: string): string | null {
+  const hasBoxChars = /[│┌┐└┘├┤▼▲►◄─]/.test(code);
+  const hasBrackets = /\[\s*[^\]]+?\s*\]/.test(code);
+  if (!hasBoxChars || !hasBrackets) return null;
+
+  try {
+    const lines = code.split('\n');
+    const nodes: { id: string; label: string }[] = [];
+    const subItems: string[] = [];
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line) continue;
+
+      const boxMatches = [...rawLine.matchAll(/\[\s*([^\]]+?)\s*\]/g)];
+      if (boxMatches.length > 0) {
+        for (const m of boxMatches) {
+          const label = m[1].trim();
+          if (label && !nodes.some(n => n.label === label)) {
+            nodes.push({ id: `node_${nodes.length}`, label });
+          }
+        }
+      } else if (/[├└]──\s*(.+)/.test(line)) {
+        const subMatch = line.match(/[├└]──\s*(.+)/);
+        if (subMatch) {
+          subItems.push(subMatch[1].trim());
+        }
+      }
+    }
+
+    if (nodes.length < 2) return null;
+
+    const mermaid: string[] = ['flowchart TD'];
+    nodes.forEach(n => {
+      const cleanLabel = n.label.replace(/"/g, "'");
+      mermaid.push(`    ${n.id}["${cleanLabel}"]`);
+    });
+
+    if (nodes.length === 2) {
+      mermaid.push(`    ${nodes[0].id} --> ${nodes[1].id}`);
+    } else if (nodes.length === 3) {
+      mermaid.push(`    ${nodes[0].id} --> ${nodes[1].id}`);
+      mermaid.push(`    ${nodes[1].id} --> ${nodes[2].id}`);
+    } else if (nodes.length >= 4) {
+      mermaid.push(`    ${nodes[0].id} --> ${nodes[1].id}`);
+      mermaid.push(`    ${nodes[1].id} --> ${nodes[2].id}`);
+      for (let i = 3; i < nodes.length; i++) {
+        mermaid.push(`    ${nodes[2].id} --> ${nodes[i].id}`);
+      }
+    }
+
+    if (subItems.length > 0 && nodes.length >= 3) {
+      mermaid.push(`    subgraph AppLayers["Pemisahan Komponen Aplikasi"]`);
+      subItems.forEach((item, idx) => {
+        const cleanItem = item.replace(/"/g, "'");
+        mermaid.push(`        sub_${idx}["${cleanItem}"]`);
+      });
+      mermaid.push(`    end`);
+      mermaid.push(`    ${nodes[2].id} --- AppLayers`);
+    }
+
+    return mermaid.join('\n');
+  } catch (err) {
+    return null;
+  }
+}
+
 // Split into Markdown chunks and Mermaid blocks while shielding code from normalization
 function parseChunks(raw: string): ContentChunk[] {
   const lines = raw.split(/\r?\n/);
   const chunks: ContentChunk[] = [];
   let currentMd: string[] = [];
-  let inMermaid = false;
   let inCode = false;
-  let currentMermaid: string[] = [];
+  let codeFence = '';
+  let codeLines: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
 
-    // Start of a Mermaid diagram
-    if (!inCode && !inMermaid && trimmed.startsWith('```mermaid')) {
+    // Start of a code block (```mermaid or ``` or ```python etc.)
+    if (!inCode && trimmed.startsWith('```')) {
       if (currentMd.length > 0) {
         chunks.push({ type: 'markdown', content: normalizeTextChunk(currentMd.join('\n')) });
         currentMd = [];
       }
-      inMermaid = true;
+      inCode = true;
+      codeFence = trimmed;
+      codeLines = [];
       continue;
     }
 
-    // End of a Mermaid diagram
-    if (inMermaid && trimmed.startsWith('```')) {
-      chunks.push({ type: 'mermaid', content: currentMermaid.join('\n') });
-      currentMermaid = [];
-      inMermaid = false;
+    // End of the active code block
+    if (inCode && trimmed.startsWith('```')) {
+      const fullCode = codeLines.join('\n');
+      const lang = codeFence.replace(/^```/, '').trim().toLowerCase();
+
+      // Check if this block should be rendered as Mermaid
+      const isExplicitMermaid = lang === 'mermaid';
+      const isImplicitMermaid = /^(flowchart|graph|sequenceDiagram|erDiagram|classDiagram|stateDiagram|gantt|pie|mindmap)\b/m.test(fullCode.trim());
+      const asciiMermaid = (!isExplicitMermaid && !isImplicitMermaid) ? tryConvertAsciiToMermaid(fullCode) : null;
+
+      if (isExplicitMermaid || isImplicitMermaid) {
+        chunks.push({ type: 'mermaid', content: fullCode.trim() });
+      } else if (asciiMermaid) {
+        chunks.push({ type: 'mermaid', content: asciiMermaid });
+      } else {
+        // Standard markdown code block
+        currentMd.push(codeFence);
+        currentMd.push(...codeLines);
+        currentMd.push(line);
+      }
+
+      inCode = false;
+      codeFence = '';
+      codeLines = [];
       continue;
     }
 
-    // Standard non-mermaid code block boundary
-    if (!inMermaid && trimmed.startsWith('```')) {
-      inCode = !inCode;
-      currentMd.push(line);
-      continue;
-    }
-
-    if (inMermaid) {
-      currentMermaid.push(line);
+    if (inCode) {
+      codeLines.push(line);
     } else {
       currentMd.push(line);
     }
@@ -227,9 +309,9 @@ function renderMarkdownWithIds(mdText: string, startIndex: { current: number }):
     return `<${tag} id="${id}"${attrs}>${content}</${tag}>`;
   });
 
-  // 3. Wrap all <table> elements in responsive styled containers
+  // 3. Wrap all <table> elements in responsive styled containers (consume full opening tag to prevent stray '>')
   html = html
-    .replace(/<table/g, '<div class="table-container my-8 overflow-x-auto rounded-2xl border border-zinc-800 bg-[#121217] shadow-xl"><table class="w-full border-collapse my-0 text-left text-xs sm:text-[13px] leading-relaxed text-zinc-300">')
+    .replace(/<table[^>]*>/gi, '<div class="table-container my-8 overflow-x-auto rounded-2xl border border-zinc-800 bg-[#121217] shadow-xl"><table class="w-full border-collapse my-0 text-left text-xs sm:text-[13px] leading-relaxed text-zinc-300">')
     .replace(/<\/table>/g, '</table></div>');
 
   return html;
