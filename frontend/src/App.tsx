@@ -533,19 +533,6 @@ export default function App() {
 
         {/* Right: Actions, Quota Counter & Profile */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
-          {/* Agent Checkpoint Bridge Button (Active on Step 3) */}
-          {step === 3 && (
-            <button
-              onClick={() => setShowAgentPrompt(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#ff5c20]/40 bg-[#ff5c20]/10 hover:bg-[#ff5c20]/20 text-[#ff5c20] text-xs font-semibold transition-all shadow-sm shadow-[#ff5c20]/20 cursor-pointer"
-              title="Hubungkan ke Cursor, Claude Code, atau Antigravity"
-            >
-              <Cpu className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Hubungkan Agent</span>
-              <span className="sm:hidden">Agent</span>
-            </button>
-          )}
-
           {/* Free Quota Badge */}
           {user && (
             <div className="hidden sm:flex items-center gap-1.5 bg-[#121215] border border-[#27272a] px-2.5 py-1 rounded-full text-xs text-zinc-300">
@@ -834,9 +821,11 @@ export default function App() {
           <div className="flex flex-col space-y-5 animate-in fade-in duration-300">
             {/* Stage Toolbar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3.5 border-b border-[#27272a]">
-              <div>
-                <span className="text-xs font-mono uppercase tracking-wider text-[#ff5c20] font-bold">Tahap 3: Dokumen PRD + Task</span>
-                <h2 className="text-xl sm:text-2xl font-bold text-white mt-0.5">{title || 'Spesifikasi & Pipeline Task'}</h2>
+              <div className="flex items-center gap-2.5">
+                <span className="w-2 h-2 rounded-full bg-[#ff5c20] animate-pulse shrink-0" />
+                <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-zinc-200">
+                  Tahap 3: Dokumen PRD &amp; Task Pipeline
+                </span>
               </div>
 
               {/* Subtabs Switcher & Agent Bridge Button */}
@@ -887,7 +876,6 @@ export default function App() {
                     content={prdMarkdown}
                     onRevise={(inst) => handleRevisePRD(inst)}
                     revising={revisingPrd}
-                    onConnectAgent={() => setShowAgentPrompt(true)}
                   />
                 )}
               </div>

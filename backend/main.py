@@ -571,7 +571,20 @@ Instruksi tegas bagi coding agent (Cursor, Windsurf, Claude Code):
 - Struktur kode modular dan clean architecture.
 """.replace("__TITLE__", plan.get("title", "Project Plan")).replace("__IDEA__", str(idea)).replace("__FEATURES__", json.dumps(features, ensure_ascii=False))
 
-    prd_md = call_llm([{"role": "user", "content": prompt}], response_json=False)
+    system_msg = {
+        "role": "system",
+        "content": (
+            "Kamu adalah Senior Principal Product Manager dan Lead Software Architect kelas dunia. "
+            "Tugas utamamu adalah menyusun dokumen Product Requirement Document (PRD) yang sangat komprehensif, terperinci, "
+            "dan berstandar industri dalam format MARKDOWN MURNI (GitHub Flavored Markdown). "
+            "DILARANG KERAS mengembalikan kode HTML mentah (<!DOCTYPE html>) atau file tunggal mockup. "
+            "DILARANG KERAS bersikap malas atau menerapkan pola 'ponytail' / 'YAGNI shortcut' yang memangkas dokumen PRD. "
+            "Kamu WAJIB menuliskan dokumen spesifikasi PRD utuh dengan 7 bab lengkap, diagram Mermaid valid (Sequence Diagram & ERD), "
+            "tabel matriks kebutuhan fungsional (FR-001...), dan kamus data database terperinci."
+        )
+    }
+
+    prd_md = call_llm([system_msg, {"role": "user", "content": prompt}], response_json=False)
     plan["generatedPrd"] = prd_md
     save_db(db)
     
@@ -599,9 +612,17 @@ Berikut adalah PRD saat ini:
 Instruksi revisi dari pengguna:
 "{instruction}"
 
-Revisi dan perbarui PRD di atas sesuai instruksi secara presisi. Kembalikan HANYA dokumen Markdown yang telah direvisi secara utuh tanpa komentar tambahan di luar markdown.
+Revisi dan perbarui PRD di atas sesuai instruksi secara presisi. Kembalikan HANYA dokumen Markdown yang telah direvisi secara utuh tanpa komentar tambahan di luar markdown. DILARANG KERAS mengembalikan kode HTML mentah.
 """
-    updated_prd = call_llm([{"role": "user", "content": prompt}], response_json=False)
+    revise_system_msg = {
+        "role": "system",
+        "content": (
+            "Kamu adalah Senior Principal Product Manager dan Lead Software Architect kelas dunia. "
+            "Revisi dokumen PRD dalam format MARKDOWN MURNI (GitHub Flavored Markdown) sesuai instruksi pengguna. "
+            "DILARANG KERAS mengembalikan kode HTML mentah (<!DOCTYPE html>) atau memangkas bab PRD."
+        )
+    }
+    updated_prd = call_llm([revise_system_msg, {"role": "user", "content": prompt}], response_json=False)
     plan["generatedPrd"] = updated_prd
     save_db(db)
     return JSONResponse(content={"status": "complete", "content": updated_prd})

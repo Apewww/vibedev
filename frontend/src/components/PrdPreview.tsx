@@ -3,7 +3,7 @@ import mermaid from 'mermaid';
 import { marked } from 'marked';
 import { 
   FileText, Copy, Check, Download, Sparkles, 
-  Plus, Minus, Maximize2, Cpu, RefreshCw, Send,
+  Plus, Minus, Maximize2, RefreshCw, Send,
   Bookmark, Code2
 } from 'lucide-react';
 
@@ -12,7 +12,6 @@ interface PrdPreviewProps {
   content: string;
   onRevise?: (instruction: string) => void;
   revising?: boolean;
-  onConnectAgent?: () => void;
 }
 
 interface OutlineItem {
@@ -406,8 +405,7 @@ export const PrdPreview: React.FC<PrdPreviewProps> = ({
   title,
   content,
   onRevise,
-  revising = false,
-  onConnectAgent
+  revising = false
 }) => {
   const [copied, setCopied] = useState(false);
   const [activeHeading, setActiveHeading] = useState<string>('');
@@ -506,17 +504,6 @@ export const PrdPreview: React.FC<PrdPreviewProps> = ({
             <Download className="w-3.5 h-3.5 text-zinc-400" />
             <span>Unduh .md</span>
           </button>
-
-          {onConnectAgent && (
-            <button
-              onClick={onConnectAgent}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-[#ff5c20] to-[#e04f18] text-white text-xs font-bold transition-all shadow-md shadow-[#ff5c20]/25 cursor-pointer"
-              title="Hubungkan ke IDE Agent"
-            >
-              <Cpu className="w-3.5 h-3.5" />
-              <span>Hubungkan Agent</span>
-            </button>
-          )}
         </div>
       </div>
 
