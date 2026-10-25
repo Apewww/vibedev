@@ -584,6 +584,43 @@ async def update_task_status(plan_id: str, task_id: str, request: Request):
     plan["tasks"] = tasks
     save_db(db)
     return {"success": True, "tasks": tasks}
+
+import hmac
+import hashlib
+import subprocess
+
+GITHUB_WEBHOOK_SECRET = os.getenv("GITHUB_WEBHOOK_SECRET", "vibedev_deploy_secret_2026")
+
+@app.post("/api/webhook/deploy")
+async def github_webhook(request: Request):
+    signature_header = request.headers.get("X-Hub-Signature-256")
+    body_bytes = await request.body()
+    
+    # If secret is set, verify HMAC
+    if GITHUB_WEBHOOK_SECRET and signature_header:
+        expected_sig = "sha256=" + hmac.new(
+            GITHUB_WEBHOOK_SECRET.encode(),
+            body_bytes,
+            hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(signature_header, expected_sig):
+            raise HTTPException(status_code=403, detail="Invalid signature")
+
+    try:
+        event = request.headers.get("X-GitHub-Event", "push")
+        if event == "ping":
+            return {"status": "pong"}
+
+        payload = json.loads(body_bytes.decode())
+        ref = payload.get("ref", "")
+        # Only deploy on main branch push
+        if ref == "refs/heads/main" or not ref:
+            # Trigger background deployment script on CT 101 via SSH
+            subprocess.Popen(["/bin/bash", "/var/www/trigger_remote_deploy.sh"])
+            return {"status": "deploy_triggered", "ref": ref}
+        return {"status": "ignored", "ref": ref}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8010)
