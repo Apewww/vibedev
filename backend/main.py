@@ -20,7 +20,7 @@ app.add_middleware(
 )
 
 ROUTER_URL = "https://9router.raflylabs.com/v1/chat/completions"
-ROUTER_KEY = os.getenv("ROUTER_KEY", "")
+ROUTER_KEY = os.getenv("ROUTER_KEY", "sk-135ab29b75e9590d-zxgcfe-1cf93bca")
 ROUTER_MODEL = "vibedev"
 
 DB_FILE = "/var/www/vibedev_data.json"
@@ -187,45 +187,82 @@ async def generate_questions(body: QuestionsRequest):
     idea = plan.get("idea", "")
     lang = plan.get("language", "id")
 
-    prompt = f"""Kamu adalah Technical Product Manager expert.
-Berdasarkan ide aplikasi berikut, buatkan 4 sampai 5 pertanyaan kuesioner terpenting agar PRD yang dihasilkan sangat akurat.
-Ide Aplikasi: "{idea}"
+    prompt = f"""Kamu adalah Lead Technical Product Manager.
+Berdasarkan ide aplikasi: "{idea}"
 
-Kembalikan jawaban HANYA dalam JSON format persis seperti ini:
+Buat tepat 5 pertanyaan spesifikasi teknis dan bisnis dalam format input teks, DI MANA setiap pertanyaan dilengkapi dengan 3-4 opsi rekomendasi jawaban (suggested pills) yang relevan dan mendalam untuk mendukung pembuatan PRD kelas industri.
+Aspek yang harus dicakup:
+1. Target Pengguna & Problem Statement utama
+2. Alur Pengguna Utama (Core User Flow) & Fitur Kunci
+3. Metode Autentikasi & Hak Akses (Role/Permission)
+4. Integrasi Pihak Ketiga & External APIs (Payment, WhatsApp, Maps, OAuth, dll)
+5. Estimasi Skala & Kebutuhan Khusus (Kapasitas, Keamanan, Offline-support, dll)
+
+Kembalikan HANYA format JSON valid berikut:
 {{
   "questions": [
     {{
-      "id": "target-user",
-      "question": "Pertanyaan untuk target pengguna?",
-      "type": "text"
+      "id": "target_user",
+      "question": "Siapa target pengguna utama aplikasi ini?",
+      "suggestions": ["Mahasiswa & freelancer yang sering split bill", "Keluarga atau pasangan dengan budget bersama", "UMKM / Pengusaha kecil"]
     }},
     {{
-      "id": "auth-method",
-      "question": "Metode login apa yang diinginkan?",
-      "type": "single_choice",
-      "options": ["Email/Password", "Google OAuth", "Tanpa Login"]
+      "id": "core_flow",
+      "question": "Bagaimana alur utama pengguna saat mencatat atau menggunakan fitur?",
+      "suggestions": ["Kirim pesan singkat via WhatsApp lalu bot auto-categorize", "Foto struk fisik via kamera dan OCR parsing otomatis", "Input manual form via web dashboard"]
     }},
     {{
-      "id": "scale",
-      "question": "Perkiraan pengguna di bulan pertama?",
-      "type": "single_choice",
-      "options": ["< 100", "100-1.000", "1.000+"]
+      "id": "auth_roles",
+      "question": "Metode login dan tingkatan hak akses apa yang dibutuhkan?",
+      "suggestions": ["Tanpa login (berdasarkan nomor WhatsApp)", "Login Google OAuth + Single User", "Multi-user role: Admin, Staff, dan Viewer"]
+    }},
+    {{
+      "id": "integrations",
+      "question": "Layanan pihak ketiga atau API apa saja yang akan diintegrasikan?",
+      "suggestions": ["WhatsApp Business Cloud API + Meta Webhook", "Payment Gateway Midtrans / Xendit", "Google Drive / Cloud Storage untuk backup file"]
+    }},
+    {{
+      "id": "scale_infra",
+      "question": "Berapa target pengguna awal dan apa kebutuhan keamanan/infrastruktur khusus?",
+      "suggestions": ["< 1.000 pengguna aktif dengan PostgreSQL single instance", "Target viral (>10k user) butuh Redis cache + background worker", "Wajib end-to-end encryption untuk data finansial sensitif"]
     }}
   ]
 }}
-Gunakan Bahasa {"Indonesia" if lang == "id" else "English"}."""
+Gunakan Bahasa Indonesia.
+"""
 
     content = call_llm([{"role": "user", "content": prompt}], response_json=True)
     try:
         data = json.loads(content)
         return {"questions": data.get("questions", [])}
     except Exception:
-        # Fallback
         return {
             "questions": [
-                {"id": "target-user", "question": "Siapa target user utama aplikasi ini?", "type": "text"},
-                {"id": "monetization", "question": "Bagaimana rencana monetisasi aplikasi ini?", "type": "single_choice", "options": ["Gratis", "Freemium", "Berbayar"]},
-                {"id": "scale", "question": "Berapa banyak user yang diharapkan?", "type": "single_choice", "options": ["< 100", "100-1.000", "1.000+"]}
+                {
+                    "id": "target_user",
+                    "question": "Siapa target pengguna utama aplikasi ini?",
+                    "suggestions": ["Mahasiswa & pekerja muda", "Pelaku UMKM / toko online", "Pengguna umum sehari-hari"]
+                },
+                {
+                    "id": "core_flow",
+                    "question": "Bagaimana alur utama interaksi pengguna dalam aplikasi?",
+                    "suggestions": ["Kirim pesan teks atau foto struk lalu bot mencatat otomatis", "Buka web dashboard dan isi form pengeluaran", "Notifikasi pengingat terjadwal via chat"]
+                },
+                {
+                    "id": "auth_roles",
+                    "question": "Metode autentikasi dan tingkatan hak akses apa yang dibutuhkan?",
+                    "suggestions": ["Verifikasi nomor WhatsApp (OTP / nomor WA)", "Login Google OAuth 2.0", "Role: Admin toko & Kasir"]
+                },
+                {
+                    "id": "integrations",
+                    "question": "Layanan eksternal atau API apa yang harus terhubung?",
+                    "suggestions": ["Meta WhatsApp Cloud API", "Payment Gateway (QRIS / Midtrans)", "AI Vision OCR untuk baca struk belanja"]
+                },
+                {
+                    "id": "scale_infra",
+                    "question": "Berapa target pengguna awal dan apakah ada kebutuhan keamanan data khusus?",
+                    "suggestions": ["Kapasitas 1.000 pengguna pertama, database Postgres", "Skala besar (>10.000 user) butuh worker asynchronous", "Enkripsi data transaksi pribadi"]
+                }
             ]
         }
 

@@ -1,59 +1,40 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Sparkles, ArrowRight, CheckCircle2, Copy, Check, 
+  Sparkles, ArrowRight, Copy, Check, 
   ArrowLeft, RefreshCw, LogOut, 
-  HelpCircle, Kanban, GitFork, FileCheck
+  HelpCircle, GitFork, Kanban, FileCheck
 } from 'lucide-react';
 import { marked } from 'marked';
 import { VibeJourney } from './components/VibeJourney';
 import { TaskKanban, type TaskItem } from './components/TaskKanban';
+import { FlowMap, type FeatureNode } from './components/FlowMap';
 
-interface Question {
+interface QuestionItem {
   id: string;
   question: string;
-  type: string;
-  options?: string[];
-}
-
-interface Feature {
-  id: string;
-  name: string;
-  summary: string;
-  icon?: string;
-  priority?: string;
-  phase?: string;
-}
-
-interface SubFeature {
-  id: string;
-  featureId: string;
-  name: string;
-  summary: string;
-  priority?: string;
-  state?: string;
+  suggestions?: string[];
 }
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
-  const [step, setStep] = useState<number>(1); // 1: Ide, 2: Kuesioner, 3: Flow Map, 4: Task Kanban, 5: PRD
+  const [step, setStep] = useState<number>(1); // 1: Ide, 2: Kuesioner (5 Field + Pills), 3: Flow Map, 4: Task Kanban, 5: PRD
   const [idea, setIdea] = useState<string>('');
   const [planId, setPlanId] = useState<string>('');
   const [title, setTitle] = useState<string>('');
   
-  // Tech stack
+  // Tech stack target
   const [frontendTech, setFrontendTech] = useState<string>('Next.js / React (TypeScript)');
   const [backendTech, setBackendTech] = useState<string>('FastAPI / Python');
   const [databaseTech, setDatabaseTech] = useState<string>('PostgreSQL + Prisma / SQLAlchemy');
 
-  // Questionnaire state
-  const [questions, setQuestions] = useState<Question[]>([]);
+  // Questionnaire state: Exactly 5 text fields with suggestions
+  const [questions, setQuestions] = useState<QuestionItem[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [loadingQuestions, setLoadingQuestions] = useState<boolean>(false);
 
-  // Flow Map / Roadmap state
-  const [features, setFeatures] = useState<Feature[]>([]);
-  const [subFeatures, setSubFeatures] = useState<SubFeature[]>([]);
-  const [loadingRoadmap, setLoadingRoadmap] = useState<boolean>(false);
+  // Flow Map state
+  const [features, setFeatures] = useState<FeatureNode[]>([]);
+  const [loadingFlowMap, setLoadingFlowMap] = useState<boolean>(false);
 
   // Task Kanban state
   const [tasks, setTasks] = useState<TaskItem[]>([]);
@@ -137,7 +118,7 @@ export default function App() {
 
   // Step 2: Submit Answers -> Generate Flow Map
   const handleGenerateFlowMap = async () => {
-    setLoadingRoadmap(true);
+    setLoadingFlowMap(true);
     setStep(3);
 
     try {
@@ -154,17 +135,24 @@ export default function App() {
       });
       const rData = await rRes.json();
       setTitle(rData.title || title);
-      setFeatures(rData.features || []);
-      setSubFeatures(rData.subFeatures || []);
+      
+      // Combine features and subfeatures into node tree
+      const rawFeats: any[] = rData.features || [];
+      const rawSubs: any[] = rData.subFeatures || [];
+      const featureTree: FeatureNode[] = rawFeats.map(f => ({
+        ...f,
+        subFeatures: rawSubs.filter(s => s.featureId === f.id)
+      }));
+      setFeatures(featureTree);
     } catch (err) {
       console.error(err);
       alert('Terjadi kesalahan menyusun flow map arsitektur.');
     } finally {
-      setLoadingRoadmap(false);
+      setLoadingFlowMap(false);
     }
   };
 
-  // Step 3: From Flow Map -> Generate Tasks
+  // Step 3: From Flow Map -> Generate Tasks & PRD
   const handleGenerateTasks = async () => {
     setLoadingTasks(true);
     setStep(4);
@@ -199,7 +187,7 @@ export default function App() {
     }
   };
 
-  // Step 4: Generate Final PRD
+  // Step 4 -> Step 5: Generate Final PRD
   const handleGeneratePRD = async () => {
     setLoadingPrd(true);
     setStep(5);
@@ -298,7 +286,7 @@ export default function App() {
             </h1>
 
             <p className="text-base sm:text-lg text-[#a1a1aa] max-w-2xl mb-10">
-              Pipeline lengkap: Ide ➔ Kuesioner Teknis ➔ Flow Map Arsitektur ➔ Task Kanban Board ➔ Dokumen PRD Final.
+              Pipeline lengkap: Ide Dasar ➔ 5 Kuesioner &amp; Rekomendasi ➔ Flow Map Arsitektur ➔ Task Kanban Board ➔ Dokumen PRD Final.
             </p>
 
             {/* Input Form */}
@@ -308,7 +296,7 @@ export default function App() {
                   type="text"
                   value={idea}
                   onChange={(e) => setIdea(e.target.value)}
-                  placeholder="Ceritakan ide aplikasimu... (contoh: Aplikasi pencatat keuangan via WhatsApp)"
+                  placeholder="Ceritakan ide dasarmu... (contoh: Aplikasi pencatat keuangan harian via WhatsApp)"
                   className="w-full bg-transparent px-4 py-3 text-sm sm:text-base outline-none text-white placeholder:text-zinc-600"
                   autoFocus
                 />
@@ -377,12 +365,12 @@ export default function App() {
               <div className="p-5 rounded-xl border border-[#27272a] bg-[#121215]/50">
                 <GitFork className="w-5 h-5 text-[#ff5c20] mb-3" />
                 <h3 className="font-semibold text-sm mb-1 text-zinc-200">Flow Map Interaktif</h3>
-                <p className="text-xs text-[#a1a1aa] leading-relaxed">Pohon relasi modul inti, dependensi logic, dan alur data dari antarmuka ke database.</p>
+                <p className="text-xs text-[#a1a1aa] leading-relaxed">Visualisasi pohon modul fitur dan relasi alur logic yang siap diproses ke task.</p>
               </div>
               <div className="p-5 rounded-xl border border-[#27272a] bg-[#121215]/50">
                 <Kanban className="w-5 h-5 text-[#ff5c20] mb-3" />
-                <h3 className="font-semibold text-sm mb-1 text-zinc-200">Kanban Board (To-Do, On-Going, Done)</h3>
-                <p className="text-xs text-[#a1a1aa] leading-relaxed">Task siap eksekusi dengan status To-Do, On-Going, dan Done untuk tracking pengerjaan coding agent.</p>
+                <h3 className="font-semibold text-sm mb-1 text-zinc-200">Task Kanban Board</h3>
+                <p className="text-xs text-[#a1a1aa] leading-relaxed">Task siap eksekusi dengan status To-Do, On-Going, dan Done untuk tracking pengerjaan.</p>
               </div>
               <div className="p-5 rounded-xl border border-[#27272a] bg-[#121215]/50">
                 <FileCheck className="w-5 h-5 text-[#ff5c20] mb-3" />
@@ -393,19 +381,19 @@ export default function App() {
           </div>
         )}
 
-        {/* STEP 2: QUESTIONNAIRE */}
+        {/* STEP 2: QUESTIONNAIRE (5 TEXT FIELDS + REKOMENDASI OPSI) */}
         {step === 2 && (
           <div className="w-full max-w-2xl mx-auto py-4 animate-in fade-in duration-300">
             <button 
               onClick={() => setStep(1)} 
               className="inline-flex items-center gap-1.5 text-xs text-[#a1a1aa] hover:text-white mb-6 transition-colors cursor-pointer"
             >
-              <ArrowLeft className="w-3.5 h-3.5" /> Ganti Ide
+              <ArrowLeft className="w-3.5 h-3.5" /> Ganti Ide Dasar
             </button>
 
             <div className="mb-6">
-              <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Langkah 2 / 5 — Kuesioner</span>
-              <h2 className="text-2xl font-bold mt-1 text-white">Pertanyaan Teknis Kunci</h2>
+              <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Langkah 2 / 5 — Kuesioner Teknis</span>
+              <h2 className="text-2xl font-bold mt-1 text-white">5 Pertanyaan Kunci &amp; Rekomendasi Jawaban</h2>
               <p className="text-xs sm:text-sm text-[#a1a1aa] mt-1">Ide: <span className="text-zinc-200 font-medium">"{idea}"</span></p>
             </div>
 
@@ -413,129 +401,94 @@ export default function App() {
               <div className="flex flex-col items-center justify-center py-20 gap-3 bg-[#121215] border border-[#27272a] rounded-2xl">
                 <RefreshCw className="w-8 h-8 text-[#ff5c20] animate-spin" />
                 <p className="text-sm text-zinc-300 font-medium">Model 9router VibeDev sedang menganalisis ide...</p>
-                <p className="text-xs text-[#a1a1aa]">Menyusun daftar pertanyaan kuesioner terpenting untuk sistem ini.</p>
+                <p className="text-xs text-[#a1a1aa]">Menghasilkan 5 text field pertanyaan dan opsi rekomendasi jawaban pendukung PRD.</p>
               </div>
             ) : (
               <div className="space-y-6">
                 {questions.map((q, idx) => (
-                  <div key={q.id || idx} className="p-5 rounded-xl border border-[#27272a] bg-[#121215]">
-                    <div className="flex items-center gap-2 mb-3">
-                      <HelpCircle className="w-4 h-4 text-[#ff5c20]" />
-                      <label className="text-sm font-semibold text-zinc-200">
+                  <div key={q.id || idx} className="p-5 rounded-xl border border-[#27272a] bg-[#121215] space-y-3">
+                    <div className="flex items-start gap-2.5">
+                      <HelpCircle className="w-4 h-4 text-[#ff5c20] shrink-0 mt-0.5" />
+                      <label className="text-sm font-semibold text-zinc-200 leading-snug">
                         {idx + 1}. {q.question}
                       </label>
                     </div>
 
-                    {q.options && q.options.length > 0 ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {q.options.map((opt, oIdx) => (
-                          <button
-                            key={oIdx}
-                            type="button"
-                            onClick={() => setAnswers(prev => ({ ...prev, [q.id]: opt }))}
-                            className={`p-3 rounded-lg border text-left text-xs sm:text-sm transition-all flex items-center justify-between cursor-pointer ${
-                              answers[q.id] === opt 
-                                ? 'border-[#ff5c20] bg-[#ff5c20]/10 text-white font-medium' 
-                                : 'border-[#27272a] bg-[#18181b] text-[#a1a1aa] hover:border-zinc-700'
-                            }`}
-                          >
-                            <span>{opt}</span>
-                            {answers[q.id] === opt && <Check className="w-4 h-4 text-[#ff5c20]" />}
-                          </button>
-                        ))}
+                    {/* Text Field Input */}
+                    <textarea
+                      value={answers[q.id] || ''}
+                      onChange={(e) => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                      placeholder="Ketik jawabanmu atau klik salah satu rekomendasi di bawah..."
+                      rows={2}
+                      className="w-full bg-[#18181b] border border-[#27272a] focus:border-[#ff5c20] rounded-lg p-3 text-xs sm:text-sm text-white outline-none resize-none placeholder:text-zinc-600 transition-colors"
+                    />
+
+                    {/* Suggested Pills / Opsi Rekomendasi Jawaban */}
+                    {q.suggestions && q.suggestions.length > 0 && (
+                      <div className="space-y-1.5">
+                        <span className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider block">
+                          Opsi Rekomendasi (Klik untuk memasukkan):
+                        </span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {q.suggestions.map((sug, sIdx) => {
+                            const isSelected = answers[q.id] === sug;
+                            return (
+                              <button
+                                key={sIdx}
+                                type="button"
+                                onClick={() => setAnswers(prev => ({ ...prev, [q.id]: sug }))}
+                                className={`text-[11px] px-2.5 py-1.5 rounded-lg border text-left transition-all cursor-pointer flex items-center gap-1.5 ${
+                                  isSelected 
+                                    ? 'border-[#ff5c20] bg-[#ff5c20]/15 text-[#ff5c20] font-medium' 
+                                    : 'border-zinc-800 bg-[#18181b] text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
+                                }`}
+                              >
+                                {isSelected && <Check className="w-3 h-3 text-[#ff5c20]" />}
+                                {sug}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                    ) : (
-                      <input
-                        type="text"
-                        value={answers[q.id] || ''}
-                        onChange={(e) => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
-                        placeholder="Ketik jawabanmu..."
-                        className="w-full bg-[#18181b] border border-[#27272a] focus:border-[#ff5c20] rounded-lg px-3.5 py-2.5 text-sm text-white outline-none"
-                      />
                     )}
                   </div>
                 ))}
 
                 <button
                   onClick={handleGenerateFlowMap}
-                  className="w-full bg-[#ff5c20] hover:bg-[#e04f18] text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#ff5c20]/20 cursor-pointer"
+                  className="w-full bg-[#ff5c20] hover:bg-[#e04f18] text-white font-semibold text-sm py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#ff5c20]/20 cursor-pointer"
                 >
-                  Generate Flow Map &amp; Pohon Fitur <ArrowRight className="w-4 h-4" />
+                  Lanjut ke Flow Map Arsitektur <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             )}
           </div>
         )}
 
-        {/* STEP 3: FLOW MAP & ROADMAP */}
+        {/* STEP 3: FLOW MAP ARSITEKTUR */}
         {step === 3 && (
-          <div className="w-full max-w-3xl mx-auto py-4 animate-in fade-in duration-300">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Langkah 3 / 5 — Flow Map</span>
-                <h2 className="text-2xl font-bold mt-1 text-white">{title || 'Pohon Fitur & Flow Arsitektur'}</h2>
-                <p className="text-xs sm:text-sm text-[#a1a1aa] mt-0.5">Hierarki modul sistem yang siap dipecah ke task implementasi</p>
-              </div>
+          <div className="w-full max-w-4xl mx-auto py-4">
+            <div className="flex items-center justify-between mb-4">
               <button 
                 onClick={() => setStep(2)} 
-                className="text-xs border border-[#27272a] bg-[#18181b] hover:bg-[#27272a] px-3 py-1.5 rounded-lg text-[#a1a1aa] hover:text-white transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 text-xs text-[#a1a1aa] hover:text-white transition-colors cursor-pointer"
               >
-                Ubah Kuesioner
+                <ArrowLeft className="w-3.5 h-3.5" /> Ubah Jawaban Kuesioner
               </button>
             </div>
 
-            {loadingRoadmap ? (
+            {loadingFlowMap ? (
               <div className="flex flex-col items-center justify-center py-20 gap-3 bg-[#121215] border border-[#27272a] rounded-2xl">
                 <RefreshCw className="w-8 h-8 text-[#ff5c20] animate-spin" />
-                <p className="text-sm text-zinc-300 font-medium">Principal Architect AI sedang memetakan flow map modul...</p>
-                <p className="text-xs text-[#a1a1aa]">Mengelompokkan relasi fitur, dependensi layer, dan arsitektur data.</p>
+                <p className="text-sm text-zinc-300 font-medium">Principal Architect AI sedang menyusun Flow Map...</p>
+                <p className="text-xs text-[#a1a1aa]">Memetakan modul sistem, alur proses, dan relasi data teknis.</p>
               </div>
             ) : (
-              <div className="space-y-4 mb-8">
-                {features.map((feat) => {
-                  const subs = subFeatures.filter(s => s.featureId === feat.id);
-                  return (
-                    <div key={feat.id} className="border border-[#27272a] bg-[#121215] rounded-xl p-5 hover:border-zinc-700 transition-all">
-                      <div className="flex items-start justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-lg bg-[#ff5c20]/10 border border-[#ff5c20]/20 flex items-center justify-center text-[#ff5c20]">
-                            <GitFork className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-base text-zinc-100">{feat.name}</h3>
-                            <p className="text-xs text-[#a1a1aa] mt-0.5">{feat.summary}</p>
-                          </div>
-                        </div>
-                        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700 uppercase">
-                          {feat.priority || 'high'}
-                        </span>
-                      </div>
-
-                      {/* Subfeatures / Flow Branch */}
-                      {subs.length > 0 && (
-                        <div className="mt-4 pt-4 border-t border-[#27272a]/60 pl-4 space-y-2.5">
-                          {subs.map(sub => (
-                            <div key={sub.id} className="flex items-start gap-2.5 text-xs">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-[#ff5c20] shrink-0 mt-0.5" />
-                              <div>
-                                <span className="font-medium text-zinc-200">{sub.name}</span>
-                                <span className="text-[#a1a1aa] ml-2">— {sub.summary}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-
-                <button
-                  onClick={handleGenerateTasks}
-                  className="w-full bg-[#ff5c20] hover:bg-[#e04f18] text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#ff5c20]/20 mt-6 cursor-pointer"
-                >
-                  Lanjut ke Task Kanban Board <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
+              <FlowMap 
+                title={title} 
+                features={features} 
+                onContinue={handleGenerateTasks} 
+              />
             )}
           </div>
         )}
@@ -546,8 +499,8 @@ export default function App() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <div>
                 <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Langkah 4 / 5 — Task Board</span>
-                <h2 className="text-2xl font-bold mt-1 text-white">Board Eksekusi Tugas</h2>
-                <p className="text-xs sm:text-sm text-[#a1a1aa]">Langkah pengerjaan terstruktur: To-Do ➔ On-Going ➔ Done</p>
+                <h2 className="text-2xl font-bold mt-1 text-white">Task Implementation Kanban</h2>
+                <p className="text-xs sm:text-sm text-[#a1a1aa]">Daftar tugas implementasi: To-Do ➔ On-Going ➔ Done</p>
               </div>
 
               <div className="flex items-center gap-2">
@@ -555,7 +508,7 @@ export default function App() {
                   onClick={() => setStep(3)}
                   className="text-xs border border-[#27272a] bg-[#18181b] hover:bg-[#27272a] px-3 py-2 rounded-lg text-[#a1a1aa] hover:text-white transition-colors cursor-pointer"
                 >
-                  Lihat Flow Map
+                  Kembali ke Flow Map
                 </button>
                 <button
                   onClick={handleGeneratePRD}
@@ -570,7 +523,7 @@ export default function App() {
               <div className="flex flex-col items-center justify-center py-24 gap-3 bg-[#121215] border border-[#27272a] rounded-2xl">
                 <RefreshCw className="w-8 h-8 text-[#ff5c20] animate-spin" />
                 <p className="text-sm text-zinc-300 font-medium">Tech Lead AI sedang memecah Flow Map ke Task Kanban...</p>
-                <p className="text-xs text-[#a1a1aa]">Menyusun checklist pengerjaan To-Do, On-Going, dan Done.</p>
+                <p className="text-xs text-[#a1a1aa]">Menyusun langkah pengerjaan To-Do, On-Going, dan Done.</p>
               </div>
             ) : (
               <TaskKanban tasks={tasks} onStatusChange={handleStatusChange} />
@@ -583,7 +536,7 @@ export default function App() {
           <div className="w-full max-w-4xl mx-auto py-4 animate-in fade-in duration-300">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <div>
-                <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Langkah 5 / 5 — Selesai</span>
+                <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Langkah 5 / 5 — Dokumen Final</span>
                 <h2 className="text-2xl font-bold mt-1 text-white">Product Requirement Document (PRD)</h2>
                 <p className="text-xs sm:text-sm text-[#a1a1aa]">Dokumen spesifikasi komprehensif siap pakai untuk AI Coding Agent.</p>
               </div>
