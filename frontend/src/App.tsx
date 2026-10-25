@@ -2,12 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, ArrowRight, Copy, Check, 
   ArrowLeft, RefreshCw, LogOut, 
-  HelpCircle, GitFork, Kanban, FileCheck
+  HelpCircle, GitFork, Kanban, FileCheck,
+  Users, FileText, Cpu
 } from 'lucide-react';
 import { marked } from 'marked';
 import { VibeJourney } from './components/VibeJourney';
 import { TaskKanban, type TaskItem } from './components/TaskKanban';
 import { FlowMap, type FeatureNode } from './components/FlowMap';
+import { PricingModal } from './components/PricingModal';
+import { AgentPromptModal } from './components/AgentPromptModal';
 
 interface QuestionItem {
   id: string;
@@ -22,6 +25,11 @@ export default function App() {
   const [planId, setPlanId] = useState<string>('');
   const [title, setTitle] = useState<string>('');
   
+  // Modals state
+  const [showPricing, setShowPricing] = useState<boolean>(false);
+  const [showAgentPrompt, setShowAgentPrompt] = useState<boolean>(false);
+  const [stats, setStats] = useState<{ users: number; prds: number }>({ users: 1250, prds: 3480 });
+
   // Tech stack target
   const [frontendTech, setFrontendTech] = useState<string>('Next.js / React (TypeScript)');
   const [backendTech, setBackendTech] = useState<string>('FastAPI / Python');
@@ -45,13 +53,22 @@ export default function App() {
   const [loadingPrd, setLoadingPrd] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
 
-  // Check Auth Session
+  // Check Auth Session & Live Stats
   useEffect(() => {
     fetch('/api/auth/get-session')
       .then(r => r.json())
       .then(data => {
         if (data && data.user) {
           setUser(data.user);
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/stats')
+      .then(r => r.json())
+      .then(data => {
+        if (data && data.totalUsers) {
+          setStats({ users: data.totalUsers, prds: data.totalPrds });
         }
       })
       .catch(() => {});
@@ -227,8 +244,32 @@ export default function App() {
           </span>
         </div>
 
-        {/* Auth / Profile Area */}
-        <div className="flex items-center gap-3">
+        {/* Center Live Stats Counter */}
+        <div className="hidden md:flex items-center gap-3.5 bg-[#121215] border border-[#27272a] px-3.5 py-1.5 rounded-full text-xs text-zinc-400">
+          <div className="flex items-center gap-1.5">
+            <Users className="w-3.5 h-3.5 text-[#ff5c20]" />
+            <span className="text-zinc-200 font-bold tabular-nums">{stats.users.toLocaleString('id-ID')}</span>
+            <span className="text-zinc-400">Developer</span>
+          </div>
+          <span className="text-zinc-700">•</span>
+          <div className="flex items-center gap-1.5">
+            <FileText className="w-3.5 h-3.5 text-[#ff5c20]" />
+            <span className="text-zinc-200 font-bold tabular-nums">{stats.prds.toLocaleString('id-ID')}</span>
+            <span className="text-zinc-400">PRD Terbuat</span>
+          </div>
+        </div>
+
+        {/* Auth / Upgrade / Profile Area */}
+        <div className="flex items-center gap-2.5 sm:gap-3">
+          <button
+            onClick={() => setShowPricing(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-semibold transition-all cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>Upgrade PRO</span>
+            <span className="hidden sm:inline bg-amber-500/20 px-1 py-0.5 rounded text-[10px]">25% OFF</span>
+          </button>
+
           {user ? (
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2 bg-[#121215] border border-[#27272a] px-3 py-1.5 rounded-full text-xs">
@@ -505,6 +546,13 @@ export default function App() {
 
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => setShowAgentPrompt(true)}
+                  className="flex items-center gap-1.5 bg-[#ff5c20]/10 hover:bg-[#ff5c20]/20 text-[#ff5c20] border border-[#ff5c20]/40 text-xs font-semibold px-3 py-2 rounded-lg transition-all cursor-pointer"
+                  title="Buka instruksi prompt untuk Cursor / Claude Code / Antigravity"
+                >
+                  <Cpu className="w-4 h-4" /> Hubungkan Agent
+                </button>
+                <button
                   onClick={() => setStep(3)}
                   className="text-xs border border-[#27272a] bg-[#18181b] hover:bg-[#27272a] px-3 py-2 rounded-lg text-[#a1a1aa] hover:text-white transition-colors cursor-pointer"
                 >
@@ -542,6 +590,13 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowAgentPrompt(true)}
+                  className="flex items-center gap-1.5 bg-[#ff5c20]/10 hover:bg-[#ff5c20]/20 text-[#ff5c20] border border-[#ff5c20]/40 text-xs font-semibold px-3 py-2 rounded-lg transition-all cursor-pointer"
+                  title="Buka instruksi prompt untuk Cursor / Claude Code / Antigravity"
+                >
+                  <Cpu className="w-4 h-4" /> Hubungkan Agent
+                </button>
                 <button
                   onClick={copyToClipboard}
                   disabled={loadingPrd}
@@ -583,6 +638,18 @@ export default function App() {
         )}
 
       </main>
+
+      {/* Modals */}
+      <PricingModal isOpen={showPricing} onClose={() => setShowPricing(false)} />
+      <AgentPromptModal 
+        isOpen={showAgentPrompt} 
+        onClose={() => setShowAgentPrompt(false)} 
+        planId={planId || 'p_demo'}
+        title={title || idea || 'Proyek VibeDev'}
+        idea={idea}
+        techStack={{ frontend: frontendTech, backend: backendTech, database: databaseTech }}
+        tasks={tasks}
+      />
 
       {/* Footer */}
       <footer className="border-t border-[#27272a] py-4 text-center text-xs text-[#a1a1aa]">

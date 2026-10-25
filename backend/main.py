@@ -23,20 +23,24 @@ ROUTER_URL = "https://9router.raflylabs.com/v1/chat/completions"
 ROUTER_KEY = os.getenv("ROUTER_KEY", "sk-135ab29b75e9590d-zxgcfe-1cf93bca")
 ROUTER_MODEL = "vibedev"
 
-DB_FILE = "/var/www/vibedev_data.json"
+DB_FILE = os.getenv(
+    "DB_FILE",
+    "/var/www/vibedev_data.json" if os.path.exists("/var/www") else os.path.join(os.path.dirname(os.path.abspath(__file__)), "vibedev_data.json")
+)
 
 def load_db() -> dict:
     if os.path.exists(DB_FILE):
         try:
-            with open(DB_FILE, "r") as f:
+            with open(DB_FILE, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             pass
-    return {"plans": {}, "workspaces": {}}
+    return {"plans": {}, "workspaces": {}, "users": {}, "sessions": {}}
 
 def save_db(data: dict):
-    with open(DB_FILE, "w") as f:
-        json.dump(data, f, indent=2)
+    os.makedirs(os.path.dirname(os.path.abspath(DB_FILE)), exist_ok=True)
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
 
 def call_llm(messages: list, response_json: bool = True) -> str:
     headers = {
@@ -584,6 +588,143 @@ async def update_task_status(plan_id: str, task_id: str, request: Request):
     plan["tasks"] = tasks
     save_db(db)
     return {"success": True, "tasks": tasks}
+
+@app.get("/api/pricing/plans")
+async def get_pricing_plans():
+    return {
+        "plans": [
+            {
+                "id": "free",
+                "slug": "free",
+                "name": "Free Starter",
+                "price": 0,
+                "priceFormatted": "Rp 0",
+                "period": "selamanya",
+                "description": "Untuk eksplorasi ide awal dan belajar vibe coding.",
+                "features": [
+                    "3 PRD Generator per bulan",
+                    "Akses 5 Kuesioner Teknis",
+                    "Flow Map modul standar",
+                    "Komunitas Discord VibeDev"
+                ],
+                "cta": "Mulai Gratis",
+                "isCurrent": True,
+                "highlighted": False
+            },
+            {
+                "id": "pro",
+                "slug": "pro",
+                "name": "VibeDev Pro",
+                "price": 149000,
+                "priceFormatted": "Rp 149rb",
+                "originalPrice": "Rp 200rb",
+                "period": "bulan",
+                "discountLabel": "25% OFF",
+                "description": "Untuk solo dev & freelancer yang butuh pipeline coding agent terstruktur tanpa bocor token.",
+                "features": [
+                    "✨ Unlimited PRD & Roadmap Generation",
+                    "🤖 Agent Checkpoint Prompt (Cursor / Claude Code)",
+                    "🗄️ Skema Database Lengkap (Postgres DDL / Prisma)",
+                    "🔌 Kontrak API & Acceptance Criteria Rinci",
+                    "⚡ Jalur Cepat 9router AI Gateway (Low Latency)"
+                ],
+                "cta": "Upgrade ke Pro",
+                "isCurrent": False,
+                "highlighted": True
+            },
+            {
+                "id": "bundle",
+                "slug": "pro-bundle",
+                "name": "VibeDev + UI Pro Bundle",
+                "price": 199000,
+                "priceFormatted": "Rp 199rb",
+                "originalPrice": "Rp 349rb",
+                "period": "30 hari",
+                "discountLabel": "43% OFF",
+                "description": "Paket bundling PRD Agent VibeDev + Prototyping Desain UI untuk hasil maksimal.",
+                "features": [
+                    "🎁 Semua Fitur VibeDev Pro",
+                    "🎨 Akses Desain Prototyping Selama 30 Hari",
+                    "📦 1-Click Codebase Starter Template",
+                    "💬 Akses Channel Private Coaching VibeDev"
+                ],
+                "cta": "Pilih Bundle Spesial",
+                "isCurrent": False,
+                "highlighted": False
+            }
+        ]
+    }
+
+@app.get("/api/plan/{plan_id}/agent-prompt")
+async def get_agent_prompt(plan_id: str, agent_type: str = "cursor"):
+    db = load_db()
+    plan = db["plans"].get(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    
+    title = plan.get("title", "Project Plan")
+    idea = plan.get("idea", "")
+    tech = plan.get("techStack", {})
+    features = plan.get("features", [])
+    tasks = plan.get("tasks", [])
+    
+    task_list_str = "\n".join([f"- [{t.get('status', 'todo').upper()}] {t.get('title')}: {t.get('description', '')}" for t in tasks])
+    
+    prompt = f"""Kamu adalah AI Senior Fullstack Engineer yang mengeksekusi proyek "{title}" dari VibeDev AI.
+
+# 1. Konteks & Blueprint Proyek
+- Ide Utama: {idea}
+- Tech Stack Target:
+  • Frontend: {tech.get('frontend', 'React / Next.js')}
+  • Backend: {tech.get('backend', 'FastAPI / Python')}
+  • Database: {tech.get('database', 'PostgreSQL')}
+- Plan ID: {plan_id}
+
+# 2. Aturan Mutlak Eksekusi (Checkpoint Protocol)
+1. KERJAKAN SATU TASK DALAM SATU WAKTU. Jangan langsung membabat semua task sekaligus agar tidak halusinasi atau memboroskan token.
+2. CHECKPOINT PERTAMA (Frontend & Data Tiruan/Stub):
+   - Bangun antarmuka/UI terlebih dahulu menggunakan mock data di memori/state lokal.
+   - Setelah UI halaman pertama selesai, BERHENTI dan beritahu pengguna:
+     "✅ Frontend UI fase 1 telah selesai dengan mock data. Silakan uji coba interaksi di browser terlebih dahulu sebelum kita lanjut ke backend & database."
+3. CHECKPOINT KEDUA (Backend API & Database):
+   - Setelah pengguna memberi konfirmasi "lanjut", implementasikan skema database dan endpoint backend.
+   - Hubungkan frontend ke API backend riil.
+4. Jangan pernah membuat kode duplikat atau menulis credential/secret langsung di source code. Gunakan .env.
+
+# 3. Task Implementation Checklist
+{task_list_str}
+
+Mulai eksekusi dari Task 1 sekarang!
+"""
+    return {
+        "planId": plan_id,
+        "agentType": agent_type,
+        "prompt": prompt
+    }
+
+@app.get("/api/plan/{plan_id}/task/next")
+async def get_next_task(plan_id: str):
+    db = load_db()
+    plan = db["plans"].get(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    
+    tasks = plan.get("tasks", [])
+    todo_task = next((t for t in tasks if t.get("status") in ["todo", "in_progress"]), None)
+    
+    if not todo_task:
+        return {"done": True, "task": None, "message": "Semua task telah selesai!"}
+    
+    # Check if this task is a phase boundary
+    is_checkpoint = "backend" in todo_task.get("title", "").lower() or "database" in todo_task.get("title", "").lower()
+    
+    return {
+        "done": False,
+        "task": todo_task,
+        "isCheckpoint": is_checkpoint,
+        "checkpointMessage": "⛔ CHECKPOINT: Pastikan UI dan mock data sudah terverifikasi sebelum memulai layer ini." if is_checkpoint else None
+    }
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8010)
