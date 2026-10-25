@@ -100,12 +100,42 @@ async def attribute_me():
     return {"id": "user_local", "name": "Ivoni", "email": "ivoni@raflylabs.com", "role": "admin"}
 
 @app.get("/api/subscription/status")
-async def subscription_status():
-    return {
-        "planType": "pro",
-        "addonCredits": {"prdCredits": 999, "chatCredits": 999},
-        "limits": {"revisionChatEnabled": True}
+async def subscription_status(request: Request):
+    db = load_db()
+    sub = db.get("subscription", {
+        "planType": "free",
+        "prdCredits": 1,
+        "usedPrds": 0,
+        "limits": {"revisionChatEnabled": False, "agentPromptExport": False}
+    })
+    return sub
+
+@app.post("/api/subscription/upgrade")
+async def upgrade_subscription(request: Request):
+    db = load_db()
+    body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    target_plan = body.get("planType", "pro")
+    
+    db["subscription"] = {
+        "planType": target_plan,
+        "prdCredits": 999,
+        "usedPrds": 0,
+        "limits": {"revisionChatEnabled": True, "agentPromptExport": True}
     }
+    save_db(db)
+    return {"success": True, "subscription": db["subscription"]}
+
+@app.post("/api/subscription/reset")
+async def reset_subscription():
+    db = load_db()
+    db["subscription"] = {
+        "planType": "free",
+        "prdCredits": 1,
+        "usedPrds": 0,
+        "limits": {"revisionChatEnabled": False, "agentPromptExport": False}
+    }
+    save_db(db)
+    return {"success": True, "subscription": db["subscription"]}
 
 @app.get("/api/templates")
 async def list_templates():
@@ -392,6 +422,34 @@ Gunakan format Markdown lengkap dengan struktur berikut:
     save_db(db)
     
     return JSONResponse(content={"status": "complete", "content": prd_md})
+
+@app.post("/api/plan/revise")
+async def revise_prd(request: Request):
+    body = await request.json()
+    plan_id = body.get("planId")
+    instruction = body.get("instruction", "")
+    
+    db = load_db()
+    plan = db["plans"].get(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+        
+    current_prd = plan.get("generatedPrd", "")
+    prompt = f"""Kamu adalah Lead Software Architect.
+Berikut adalah PRD saat ini:
+\"\"\"
+{current_prd}
+\"\"\"
+
+Instruksi revisi dari pengguna:
+"{instruction}"
+
+Revisi dan perbarui PRD di atas sesuai instruksi secara presisi. Kembalikan HANYA dokumen Markdown yang telah direvisi secara utuh tanpa komentar tambahan di luar markdown.
+"""
+    updated_prd = call_llm([{"role": "user", "content": prompt}], response_json=False)
+    plan["generatedPrd"] = updated_prd
+    save_db(db)
+    return JSONResponse(content={"status": "complete", "content": updated_prd})
 
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
@@ -764,4 +822,4 @@ async def github_webhook(request: Request):
         return {"status": "error", "error": str(e)}
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8010)
+    uvicorn.run("main:app", host="0.0.0.0", port=8010, reload=True)

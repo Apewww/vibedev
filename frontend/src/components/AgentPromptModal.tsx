@@ -5,20 +5,20 @@ interface AgentPromptModalProps {
   isOpen: boolean;
   onClose: () => void;
   planId: string;
-  title: string;
-  idea: string;
-  techStack: { frontend: string; backend: string; database: string };
-  tasks: Array<{ id: string; title: string; description?: string; status: string }>;
+  title?: string;
+  idea?: string;
+  techStack?: { frontend: string; backend: string; database: string };
+  tasks?: Array<{ id: string; title: string; description?: string; status: string }>;
 }
 
 export const AgentPromptModal: React.FC<AgentPromptModalProps> = ({
   isOpen,
   onClose,
   planId,
-  title,
-  idea,
-  techStack,
-  tasks
+  title = 'Proyek VibeDev',
+  idea = '',
+  techStack = { frontend: 'Next.js (TS)', backend: 'FastAPI (Python)', database: 'PostgreSQL' },
+  tasks = []
 }) => {
   const [selectedAgent, setSelectedAgent] = useState<'cursor' | 'claudecode' | 'antigravity'>('cursor');
   const [copied, setCopied] = useState<boolean>(false);

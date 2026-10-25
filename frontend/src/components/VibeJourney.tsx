@@ -3,51 +3,84 @@ import { Check } from 'lucide-react';
 
 interface VibeJourneyProps {
   currentStep: number;
+  maxStepReached: number;
+  onSelectStep: (step: number) => void;
+  className?: string;
 }
 
-export const VibeJourney: React.FC<VibeJourneyProps> = ({ currentStep }) => {
+export const VibeJourney: React.FC<VibeJourneyProps> = ({ 
+  currentStep, 
+  maxStepReached, 
+  onSelectStep,
+  className = '' 
+}) => {
   const steps = [
-    { num: 1, label: '1. Ide' },
-    { num: 2, label: '2. Kuesioner' },
-    { num: 3, label: '3. Flow Map' },
-    { num: 4, label: '4. Task Kanban' },
-    { num: 5, label: '5. PRD Final' }
+    { key: 'struktur', num: 1, label: 'Ide & Kuesioner', shortLabel: 'Ide' },
+    { key: 'rencana', num: 2, label: 'PRD Spec', shortLabel: 'PRD' },
+    { key: 'fitur', num: 3, label: 'Task Pipeline', shortLabel: 'Task' }
   ];
 
   return (
-    <div className="flex items-center justify-center my-6 px-4">
-      <ol className="flex items-center gap-1.5 sm:gap-3 flex-wrap justify-center">
+    <nav aria-label="Pipeline Progress" className={`flex items-center justify-center ${className}`}>
+      <ol className="flex items-center gap-2 sm:gap-4">
         {steps.map((s, idx) => {
-          const isDone = currentStep > s.num;
+          const isDone = currentStep > s.num || maxStepReached > s.num;
           const isActive = currentStep === s.num;
+          const isClickable = s.num <= maxStepReached;
 
           return (
-            <li key={s.num} className="flex items-center">
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                {isDone ? (
-                  <span className="flex size-5 sm:size-6 shrink-0 items-center justify-center rounded-full bg-[#ff5c20] text-white">
+            <li key={s.key} className="flex items-center">
+              <button
+                type="button"
+                disabled={!isClickable}
+                onClick={() => isClickable && onSelectStep(s.num)}
+                className={`flex items-center gap-1.5 sm:gap-2 text-xs transition-all ${
+                  isClickable ? 'cursor-pointer hover:opacity-90' : 'cursor-not-allowed opacity-50'
+                }`}
+              >
+                {/* Step Circle / Badge */}
+                {isDone && !isActive ? (
+                  <span className="flex size-5 sm:size-5.5 shrink-0 items-center justify-center rounded-full bg-[#ff5c20] text-white shadow-sm shadow-[#ff5c20]/40">
                     <Check className="size-3 sm:size-3.5" strokeWidth={3} />
                   </span>
                 ) : isActive ? (
-                  <span className="flex size-5 sm:size-6 shrink-0 items-center justify-center rounded-full border-2 border-[#ff5c20] text-[#ff5c20] font-bold text-[10px] sm:text-xs bg-[#ff5c20]/10">
+                  <span className="relative flex size-5 sm:size-5.5 shrink-0 items-center justify-center rounded-full border-2 border-[#ff5c20] text-[#ff5c20] font-bold text-[10px] sm:text-xs bg-[#ff5c20]/15 shadow-sm shadow-[#ff5c20]/30">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#ff5c20] opacity-20"></span>
                     {s.num}
                   </span>
                 ) : (
-                  <span className="flex size-5 sm:size-6 shrink-0 items-center justify-center rounded-full border border-zinc-700 text-zinc-500 text-[10px] sm:text-xs">
+                  <span className="flex size-5 sm:size-5.5 shrink-0 items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-zinc-500 text-[10px] sm:text-xs">
                     {s.num}
                   </span>
                 )}
-                <span className={`text-[11px] sm:text-xs font-medium ${isActive ? 'text-white font-semibold' : isDone ? 'text-zinc-300' : 'text-zinc-500'}`}>
-                  {s.label}
+
+                {/* Step Label */}
+                <span
+                  className={`font-medium transition-colors ${
+                    isActive
+                      ? 'text-white font-semibold'
+                      : isDone
+                      ? 'text-zinc-300'
+                      : 'text-zinc-500'
+                  }`}
+                >
+                  <span className="hidden sm:inline">{s.label}</span>
+                  <span className="inline sm:hidden">{s.shortLabel}</span>
                 </span>
-              </div>
+              </button>
+
+              {/* Line Connector */}
               {idx < steps.length - 1 && (
-                <span className={`mx-1.5 sm:mx-2.5 h-0.5 w-4 sm:w-8 rounded-full ${isDone ? 'bg-[#ff5c20]' : 'bg-zinc-800'}`} />
+                <span
+                  className={`mx-2 sm:mx-3 h-0.5 w-6 sm:w-12 rounded-full transition-colors ${
+                    maxStepReached > s.num ? 'bg-[#ff5c20]' : 'bg-zinc-800'
+                  }`}
+                />
               )}
             </li>
           );
         })}
       </ol>
-    </div>
+    </nav>
   );
 };

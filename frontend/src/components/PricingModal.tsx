@@ -4,15 +4,36 @@ import { X, Check, Sparkles, Tag, ShieldCheck, Zap } from 'lucide-react';
 interface PricingModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onUpgradeSuccess?: (planType: string) => void;
 }
 
-export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) => {
+export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, onUpgradeSuccess }) => {
   const [billingCycle, setBillingCycle] = useState<'1bulan' | '3bulan' | 'tahunan'>('1bulan');
   const [voucherCode, setVoucherCode] = useState<string>('');
   const [voucherApplied, setVoucherApplied] = useState<boolean>(false);
   const [voucherDiscount, setVoucherDiscount] = useState<number>(0);
+  const [upgrading, setUpgrading] = useState<boolean>(false);
 
   if (!isOpen) return null;
+
+  const handleUpgrade = async (planType: 'pro' | 'bundle') => {
+    try {
+      setUpgrading(true);
+      const res = await fetch('/api/subscription/upgrade', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planType })
+      });
+      if (res.ok) {
+        if (onUpgradeSuccess) onUpgradeSuccess(planType);
+        onClose();
+      }
+    } catch (e) {
+      console.error('Upgrade error:', e);
+    } finally {
+      setUpgrading(false);
+    }
+  };
 
   const handleApplyVoucher = (e: React.FormEvent) => {
     e.preventDefault();
@@ -132,10 +153,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
             </div>
 
             <button 
-              onClick={() => alert(`Redirecting ke Pembayaran Midtrans / QRIS: Rp ${proPrice.toLocaleString('id-ID')}`)}
-              className="mt-6 w-full py-2.5 rounded-lg bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold transition-all shadow-md shadow-[#ff5c20]/25 cursor-pointer"
+              onClick={() => handleUpgrade('pro')}
+              disabled={upgrading}
+              className="mt-6 w-full py-2.5 rounded-lg bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold transition-all shadow-md shadow-[#ff5c20]/25 cursor-pointer disabled:opacity-50"
             >
-              Langganan Pro Sekarang
+              {upgrading ? 'Memproses Aktivasi...' : 'Langganan Pro Sekarang'}
             </button>
           </div>
 
@@ -162,10 +184,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose }) =
             </div>
 
             <button 
-              onClick={() => alert(`Redirecting ke Pembayaran Bundle Midtrans / QRIS: Rp ${bundlePrice.toLocaleString('id-ID')}`)}
-              className="mt-6 w-full py-2.5 rounded-lg border border-purple-500/50 hover:bg-purple-500/20 text-purple-300 hover:text-white text-xs font-bold transition-all cursor-pointer"
+              onClick={() => handleUpgrade('bundle')}
+              disabled={upgrading}
+              className="mt-6 w-full py-2.5 rounded-lg border border-purple-500/50 hover:bg-purple-500/20 text-purple-300 hover:text-white text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
             >
-              Ambil Paket Bundle
+              {upgrading ? 'Memproses Aktivasi...' : 'Ambil Paket Bundle'}
             </button>
           </div>
         </div>
