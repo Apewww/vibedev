@@ -477,6 +477,76 @@ async def get_stats_stream():
     def event_stream():
         yield "data: {\"users\": 1250, \"prds\": 3480}\n\n"
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+@app.post("/api/plan/tasks/generate")
+async def generate_tasks(request: Request):
+    body = await request.json()
+    plan_id = body.get("planId")
+    db = load_db()
+    plan = db["plans"].get(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    idea = plan.get("idea", "")
+    features = plan.get("features", [])
+
+    prompt = f"""Kamu adalah Lead Software Architect & Tech Lead.
+Berdasarkan ide aplikasi: "{idea}"
+Dan fitur-fitur ini: {json.dumps(features, ensure_ascii=False)}
+
+Pecah implementasi sistem ke dalam 6 sampai 9 task teknis yang konkret untuk tim developer.
+Kembalikan HANYA format JSON valid berikut:
+{{
+  "tasks": [
+    {{
+      "id": "t1",
+      "title": "Nama Task Singkat",
+      "description": "Langkah implementasi jelas",
+      "status": "todo",
+      "priority": "high"
+    }}
+  ]
+}}
+Status HANYA salah satu dari: "todo", "in_progress", "done". Buat 1 atau 2 task awal dengan status "in_progress", 1 task "done", dan sisanya "todo".
+"""
+
+    content = call_llm([{"role": "user", "content": prompt}], response_json=True)
+    try:
+        res_json = json.loads(content)
+        tasks = res_json.get("tasks", [])
+        plan["tasks"] = tasks
+        save_db(db)
+        return {"tasks": tasks}
+    except Exception:
+        fallback_tasks = [
+            {"id": "t1", "title": "Setup Repository & Inisialisasi Project", "description": "Konfigurasi boilerplate Next.js/FastAPI, ESLint, dan env secrets", "status": "done", "priority": "high"},
+            {"id": "t2", "title": "Desain Skema Database & Migration", "description": "Buat model relasi database PostgreSQL & Prisma schema", "status": "in_progress", "priority": "high"},
+            {"id": "t3", "title": "Integrasi Auth & Session Management", "description": "Pasang Google OAuth 2.0 dan cookie authentication", "status": "in_progress", "priority": "high"},
+            {"id": "t4", "title": "Implementasi Core API & Business Logic", "description": "Buat service layer dan endpoint RESTful utama", "status": "todo", "priority": "high"},
+            {"id": "t5", "title": "Slicing UI & Responsive State", "description": "Bangun komponen antarmuka modern dengan Tailwind CSS", "status": "todo", "priority": "medium"},
+            {"id": "t6", "title": "Error Boundary & Automated Testing", "description": "Tulis integration unit test dan error handling global", "status": "todo", "priority": "low"}
+        ]
+        plan["tasks"] = fallback_tasks
+        save_db(db)
+        return {"tasks": fallback_tasks}
+
+@app.patch("/api/plan/{plan_id}/tasks/{task_id}")
+async def update_task_status(plan_id: str, task_id: str, request: Request):
+    body = await request.json()
+    new_status = body.get("status")
+    db = load_db()
+    plan = db["plans"].get(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+
+    tasks = plan.get("tasks", [])
+    for t in tasks:
+        if t["id"] == task_id:
+            t["status"] = new_status
+            break
+    plan["tasks"] = tasks
+    save_db(db)
+    return {"success": True, "tasks": tasks}
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8010)

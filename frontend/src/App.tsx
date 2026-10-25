@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, ArrowRight, CheckCircle2, Copy, Check, 
-  Terminal, Layers, ArrowLeft, RefreshCw, LogOut, Code2, 
-  HelpCircle
+  ArrowLeft, RefreshCw, LogOut, 
+  HelpCircle, Kanban, GitFork, FileCheck
 } from 'lucide-react';
 import { marked } from 'marked';
 import { VibeJourney } from './components/VibeJourney';
+import { TaskKanban, type TaskItem } from './components/TaskKanban';
 
 interface Question {
   id: string;
@@ -34,12 +35,12 @@ interface SubFeature {
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
-  const [step, setStep] = useState<number>(1); // 1: Landing/Ide, 2: Kuesioner, 3: Roadmap/Fitur, 4: PRD
+  const [step, setStep] = useState<number>(1); // 1: Ide, 2: Kuesioner, 3: Flow Map, 4: Task Kanban, 5: PRD
   const [idea, setIdea] = useState<string>('');
   const [planId, setPlanId] = useState<string>('');
   const [title, setTitle] = useState<string>('');
   
-  // Tech stack choices (like ngodingpakeai)
+  // Tech stack
   const [frontendTech, setFrontendTech] = useState<string>('Next.js / React (TypeScript)');
   const [backendTech, setBackendTech] = useState<string>('FastAPI / Python');
   const [databaseTech, setDatabaseTech] = useState<string>('PostgreSQL + Prisma / SQLAlchemy');
@@ -49,10 +50,14 @@ export default function App() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [loadingQuestions, setLoadingQuestions] = useState<boolean>(false);
 
-  // Roadmap state
+  // Flow Map / Roadmap state
   const [features, setFeatures] = useState<Feature[]>([]);
   const [subFeatures, setSubFeatures] = useState<SubFeature[]>([]);
   const [loadingRoadmap, setLoadingRoadmap] = useState<boolean>(false);
+
+  // Task Kanban state
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState<boolean>(false);
 
   // PRD state
   const [prdMarkdown, setPrdMarkdown] = useState<string>('');
@@ -130,8 +135,8 @@ export default function App() {
     }
   };
 
-  // Step 2: Submit Answers & Generate Roadmap
-  const handleGenerateRoadmap = async () => {
+  // Step 2: Submit Answers -> Generate Flow Map
+  const handleGenerateFlowMap = async () => {
     setLoadingRoadmap(true);
     setStep(3);
 
@@ -153,16 +158,51 @@ export default function App() {
       setSubFeatures(rData.subFeatures || []);
     } catch (err) {
       console.error(err);
-      alert('Terjadi kesalahan menyusun roadmap fitur.');
+      alert('Terjadi kesalahan menyusun flow map arsitektur.');
     } finally {
       setLoadingRoadmap(false);
     }
   };
 
-  // Step 3: Generate Final PRD
+  // Step 3: From Flow Map -> Generate Tasks
+  const handleGenerateTasks = async () => {
+    setLoadingTasks(true);
+    setStep(4);
+
+    try {
+      const tRes = await fetch('/api/plan/tasks/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId })
+      });
+      const tData = await tRes.json();
+      setTasks(tData.tasks || []);
+    } catch (err) {
+      console.error(err);
+      alert('Gagal memproses task implementation.');
+    } finally {
+      setLoadingTasks(false);
+    }
+  };
+
+  // Update Task Status in Kanban
+  const handleStatusChange = async (taskId: string, newStatus: 'todo' | 'in_progress' | 'done') => {
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t));
+    try {
+      await fetch(`/api/plan/${planId}/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Step 4: Generate Final PRD
   const handleGeneratePRD = async () => {
     setLoadingPrd(true);
-    setStep(4);
+    setStep(5);
 
     try {
       const res = await fetch('/api/plan/generate', {
@@ -216,7 +256,7 @@ export default function App() {
               </div>
               <button 
                 onClick={handleLogout}
-                className="p-1.5 rounded-lg border border-[#27272a] hover:bg-[#27272a] text-[#a1a1aa] hover:text-white transition-colors"
+                className="p-1.5 rounded-lg border border-[#27272a] hover:bg-[#27272a] text-[#a1a1aa] hover:text-white transition-colors cursor-pointer"
                 title="Sign out"
               >
                 <LogOut className="w-4 h-4" />
@@ -225,7 +265,7 @@ export default function App() {
           ) : (
             <button
               onClick={handleGoogleLogin}
-              className="flex items-center gap-2 bg-[#18181b] hover:bg-[#27272a] text-zinc-200 hover:text-white border border-[#27272a] text-xs font-medium px-3.5 py-1.5 rounded-lg transition-all"
+              className="flex items-center gap-2 bg-[#18181b] hover:bg-[#27272a] text-zinc-200 hover:text-white border border-[#27272a] text-xs font-medium px-3.5 py-1.5 rounded-lg transition-all cursor-pointer"
             >
               <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -239,7 +279,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* Stepper Progress Bar */}
+      {/* Stepper Navigation */}
       {step > 1 && <VibeJourney currentStep={step} />}
 
       {/* Main Container */}
@@ -250,15 +290,15 @@ export default function App() {
           <div className="flex flex-col items-center text-center my-auto py-10 animate-in fade-in zoom-in-95 duration-500">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[#ff5c20]/30 bg-[#ff5c20]/10 text-[#ff5c20] text-xs font-medium mb-6">
               <Sparkles className="w-3.5 h-3.5" />
-              Generator PRD Standar AI Coding Agent (Cursor, Claude Code, Windsurf)
+              Generator PRD &amp; Task Pipeline untuk AI Coding Agent
             </div>
 
             <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight max-w-3xl leading-[1.15] mb-5">
-              Dari Ide Jadi Dokumen <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#ff5c20] to-[#ff946b]">PRD & Arsitektur</span> Siap Pakai.
+              Dari Ide Jadi <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#ff5c20] to-[#ff946b]">Flow Map, Task, &amp; PRD</span> Siap Pakai.
             </h1>
 
             <p className="text-base sm:text-lg text-[#a1a1aa] max-w-2xl mb-10">
-              Buat spesifikasi teknis, skema database, roadmap fitur, dan task execution loop untuk AI Coding Agent dalam hitungan detik.
+              Pipeline lengkap: Ide ➔ Kuesioner Teknis ➔ Flow Map Arsitektur ➔ Task Kanban Board ➔ Dokumen PRD Final.
             </p>
 
             {/* Input Form */}
@@ -268,7 +308,7 @@ export default function App() {
                   type="text"
                   value={idea}
                   onChange={(e) => setIdea(e.target.value)}
-                  placeholder="Ceritakan ide aplikasimu... (contoh: Aplikasi split-bill otomatis via WhatsApp)"
+                  placeholder="Ceritakan ide aplikasimu... (contoh: Aplikasi pencatat keuangan via WhatsApp)"
                   className="w-full bg-transparent px-4 py-3 text-sm sm:text-base outline-none text-white placeholder:text-zinc-600"
                   autoFocus
                 />
@@ -284,7 +324,7 @@ export default function App() {
 
             {/* Tech Stack Customizer */}
             <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-xs text-zinc-400">
-              <span className="text-zinc-500 font-medium">Tech Stack Target:</span>
+              <span className="text-zinc-500 font-medium">Stack Target:</span>
               <select 
                 value={frontendTech} 
                 onChange={e => setFrontendTech(e.target.value)}
@@ -325,7 +365,7 @@ export default function App() {
                 <button
                   key={idx}
                   onClick={() => setIdea(sample)}
-                  className="text-xs bg-[#18181b] hover:bg-[#27272a] text-[#a1a1aa] hover:text-white px-3 py-1.5 rounded-full border border-[#27272a] transition-all"
+                  className="text-xs bg-[#18181b] hover:bg-[#27272a] text-[#a1a1aa] hover:text-white px-3 py-1.5 rounded-full border border-[#27272a] transition-all cursor-pointer"
                 >
                   {sample}
                 </button>
@@ -335,19 +375,19 @@ export default function App() {
             {/* Feature Cards Grid */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-16 w-full text-left">
               <div className="p-5 rounded-xl border border-[#27272a] bg-[#121215]/50">
-                <Terminal className="w-5 h-5 text-[#ff5c20] mb-3" />
-                <h3 className="font-semibold text-sm mb-1 text-zinc-200">Kuesioner Teknis AI</h3>
-                <p className="text-xs text-[#a1a1aa] leading-relaxed">AI menanyakan detail arsitektur, autentikasi, dan target kapasitas untuk menghasilkan spec presisi.</p>
+                <GitFork className="w-5 h-5 text-[#ff5c20] mb-3" />
+                <h3 className="font-semibold text-sm mb-1 text-zinc-200">Flow Map Interaktif</h3>
+                <p className="text-xs text-[#a1a1aa] leading-relaxed">Pohon relasi modul inti, dependensi logic, dan alur data dari antarmuka ke database.</p>
               </div>
               <div className="p-5 rounded-xl border border-[#27272a] bg-[#121215]/50">
-                <Layers className="w-5 h-5 text-[#ff5c20] mb-3" />
-                <h3 className="font-semibold text-sm mb-1 text-zinc-200">Pohon Fitur & Roadmap</h3>
-                <p className="text-xs text-[#a1a1aa] leading-relaxed">Pecah ide aplikasi menjadi modul fitur inti, sub-fitur modular, dan prioritas implementasi.</p>
+                <Kanban className="w-5 h-5 text-[#ff5c20] mb-3" />
+                <h3 className="font-semibold text-sm mb-1 text-zinc-200">Kanban Board (To-Do, On-Going, Done)</h3>
+                <p className="text-xs text-[#a1a1aa] leading-relaxed">Task siap eksekusi dengan status To-Do, On-Going, dan Done untuk tracking pengerjaan coding agent.</p>
               </div>
               <div className="p-5 rounded-xl border border-[#27272a] bg-[#121215]/50">
-                <Code2 className="w-5 h-5 text-[#ff5c20] mb-3" />
-                <h3 className="font-semibold text-sm mb-1 text-zinc-200">Ekspor PRD & DDL DB</h3>
-                <p className="text-xs text-[#a1a1aa] leading-relaxed">Langsung menghasilkan file PRD Markdown lengkap dengan skema relasi database Postgres/Prisma.</p>
+                <FileCheck className="w-5 h-5 text-[#ff5c20] mb-3" />
+                <h3 className="font-semibold text-sm mb-1 text-zinc-200">PRD Spec Standar Industri</h3>
+                <p className="text-xs text-[#a1a1aa] leading-relaxed">Dokumen lengkap dengan DDL database, API contracts, dan acceptance criteria siap tempel.</p>
               </div>
             </div>
           </div>
@@ -358,13 +398,13 @@ export default function App() {
           <div className="w-full max-w-2xl mx-auto py-4 animate-in fade-in duration-300">
             <button 
               onClick={() => setStep(1)} 
-              className="inline-flex items-center gap-1.5 text-xs text-[#a1a1aa] hover:text-white mb-6 transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs text-[#a1a1aa] hover:text-white mb-6 transition-colors cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" /> Ganti Ide
             </button>
 
             <div className="mb-6">
-              <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Spesifikasi Kebutuhan</span>
+              <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Langkah 2 / 5 — Kuesioner</span>
               <h2 className="text-2xl font-bold mt-1 text-white">Pertanyaan Teknis Kunci</h2>
               <p className="text-xs sm:text-sm text-[#a1a1aa] mt-1">Ide: <span className="text-zinc-200 font-medium">"{idea}"</span></p>
             </div>
@@ -393,7 +433,7 @@ export default function App() {
                             key={oIdx}
                             type="button"
                             onClick={() => setAnswers(prev => ({ ...prev, [q.id]: opt }))}
-                            className={`p-3 rounded-lg border text-left text-xs sm:text-sm transition-all flex items-center justify-between ${
+                            className={`p-3 rounded-lg border text-left text-xs sm:text-sm transition-all flex items-center justify-between cursor-pointer ${
                               answers[q.id] === opt 
                                 ? 'border-[#ff5c20] bg-[#ff5c20]/10 text-white font-medium' 
                                 : 'border-[#27272a] bg-[#18181b] text-[#a1a1aa] hover:border-zinc-700'
@@ -417,38 +457,38 @@ export default function App() {
                 ))}
 
                 <button
-                  onClick={handleGenerateRoadmap}
-                  className="w-full bg-[#ff5c20] hover:bg-[#e04f18] text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#ff5c20]/20"
+                  onClick={handleGenerateFlowMap}
+                  className="w-full bg-[#ff5c20] hover:bg-[#e04f18] text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#ff5c20]/20 cursor-pointer"
                 >
-                  Lanjut ke Pohon Fitur & Roadmap <ArrowRight className="w-4 h-4" />
+                  Generate Flow Map &amp; Pohon Fitur <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             )}
           </div>
         )}
 
-        {/* STEP 3: ROADMAP / FEATURE TREE */}
+        {/* STEP 3: FLOW MAP & ROADMAP */}
         {step === 3 && (
           <div className="w-full max-w-3xl mx-auto py-4 animate-in fade-in duration-300">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Pohon Fitur Produk</span>
-                <h2 className="text-2xl font-bold mt-1 text-white">{title || 'Arsitektur Fitur'}</h2>
-                <p className="text-xs sm:text-sm text-[#a1a1aa] mt-0.5">Daftar modul fitur utama dan sub-fitur modular</p>
+                <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Langkah 3 / 5 — Flow Map</span>
+                <h2 className="text-2xl font-bold mt-1 text-white">{title || 'Pohon Fitur & Flow Arsitektur'}</h2>
+                <p className="text-xs sm:text-sm text-[#a1a1aa] mt-0.5">Hierarki modul sistem yang siap dipecah ke task implementasi</p>
               </div>
               <button 
                 onClick={() => setStep(2)} 
-                className="text-xs border border-[#27272a] bg-[#18181b] hover:bg-[#27272a] px-3 py-1.5 rounded-lg text-[#a1a1aa] hover:text-white transition-colors"
+                className="text-xs border border-[#27272a] bg-[#18181b] hover:bg-[#27272a] px-3 py-1.5 rounded-lg text-[#a1a1aa] hover:text-white transition-colors cursor-pointer"
               >
-                Ubah Jawaban
+                Ubah Kuesioner
               </button>
             </div>
 
             {loadingRoadmap ? (
               <div className="flex flex-col items-center justify-center py-20 gap-3 bg-[#121215] border border-[#27272a] rounded-2xl">
                 <RefreshCw className="w-8 h-8 text-[#ff5c20] animate-spin" />
-                <p className="text-sm text-zinc-300 font-medium">Principal Architect AI sedang memecah pohon fitur...</p>
-                <p className="text-xs text-[#a1a1aa]">Mengelompokkan sub-fitur, dependensi, dan prioritas sprint.</p>
+                <p className="text-sm text-zinc-300 font-medium">Principal Architect AI sedang memetakan flow map modul...</p>
+                <p className="text-xs text-[#a1a1aa]">Mengelompokkan relasi fitur, dependensi layer, dan arsitektur data.</p>
               </div>
             ) : (
               <div className="space-y-4 mb-8">
@@ -459,7 +499,7 @@ export default function App() {
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-lg bg-[#ff5c20]/10 border border-[#ff5c20]/20 flex items-center justify-center text-[#ff5c20]">
-                            <Layers className="w-4 h-4" />
+                            <GitFork className="w-4 h-4" />
                           </div>
                           <div>
                             <h3 className="font-semibold text-base text-zinc-100">{feat.name}</h3>
@@ -471,7 +511,7 @@ export default function App() {
                         </span>
                       </div>
 
-                      {/* Subfeatures */}
+                      {/* Subfeatures / Flow Branch */}
                       {subs.length > 0 && (
                         <div className="mt-4 pt-4 border-t border-[#27272a]/60 pl-4 space-y-2.5">
                           {subs.map(sub => (
@@ -490,40 +530,84 @@ export default function App() {
                 })}
 
                 <button
-                  onClick={handleGeneratePRD}
-                  className="w-full bg-[#ff5c20] hover:bg-[#e04f18] text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#ff5c20]/20 mt-6"
+                  onClick={handleGenerateTasks}
+                  className="w-full bg-[#ff5c20] hover:bg-[#e04f18] text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#ff5c20]/20 mt-6 cursor-pointer"
                 >
-                  Generate Dokumen PRD Lengkap <ArrowRight className="w-4 h-4" />
+                  Lanjut ke Task Kanban Board <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             )}
           </div>
         )}
 
-        {/* STEP 4: FINAL PRD VIEWER */}
+        {/* STEP 4: TASK KANBAN BOARD */}
         {step === 4 && (
+          <div className="w-full max-w-5xl mx-auto py-4 animate-in fade-in duration-300">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div>
+                <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Langkah 4 / 5 — Task Board</span>
+                <h2 className="text-2xl font-bold mt-1 text-white">Board Eksekusi Tugas</h2>
+                <p className="text-xs sm:text-sm text-[#a1a1aa]">Langkah pengerjaan terstruktur: To-Do ➔ On-Going ➔ Done</p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setStep(3)}
+                  className="text-xs border border-[#27272a] bg-[#18181b] hover:bg-[#27272a] px-3 py-2 rounded-lg text-[#a1a1aa] hover:text-white transition-colors cursor-pointer"
+                >
+                  Lihat Flow Map
+                </button>
+                <button
+                  onClick={handleGeneratePRD}
+                  className="flex items-center gap-1.5 bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all shadow-md shadow-[#ff5c20]/20 cursor-pointer"
+                >
+                  Generate PRD Final <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {loadingTasks ? (
+              <div className="flex flex-col items-center justify-center py-24 gap-3 bg-[#121215] border border-[#27272a] rounded-2xl">
+                <RefreshCw className="w-8 h-8 text-[#ff5c20] animate-spin" />
+                <p className="text-sm text-zinc-300 font-medium">Tech Lead AI sedang memecah Flow Map ke Task Kanban...</p>
+                <p className="text-xs text-[#a1a1aa]">Menyusun checklist pengerjaan To-Do, On-Going, dan Done.</p>
+              </div>
+            ) : (
+              <TaskKanban tasks={tasks} onStatusChange={handleStatusChange} />
+            )}
+          </div>
+        )}
+
+        {/* STEP 5: FINAL PRD VIEWER */}
+        {step === 5 && (
           <div className="w-full max-w-4xl mx-auto py-4 animate-in fade-in duration-300">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <div>
-                <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">PRD & Engineering Spec</span>
-                <h2 className="text-2xl font-bold mt-1 text-white">Product Requirement Document</h2>
-                <p className="text-xs sm:text-sm text-[#a1a1aa]">Dokumen siap tempel langsung ke AI coding agent.</p>
+                <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Langkah 5 / 5 — Selesai</span>
+                <h2 className="text-2xl font-bold mt-1 text-white">Product Requirement Document (PRD)</h2>
+                <p className="text-xs sm:text-sm text-[#a1a1aa]">Dokumen spesifikasi komprehensif siap pakai untuk AI Coding Agent.</p>
               </div>
 
               <div className="flex items-center gap-2">
                 <button
                   onClick={copyToClipboard}
                   disabled={loadingPrd}
-                  className="flex items-center gap-1.5 bg-[#ff5c20] hover:bg-[#e04f18] disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all shadow-md shadow-[#ff5c20]/20"
+                  className="flex items-center gap-1.5 bg-[#ff5c20] hover:bg-[#e04f18] disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-all shadow-md shadow-[#ff5c20]/20 cursor-pointer"
                 >
                   {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                   {copied ? 'Tersalin ke Clipboard!' : 'Salin Semua PRD'}
                 </button>
                 <button
-                  onClick={() => setStep(1)}
-                  className="text-xs border border-[#27272a] bg-[#18181b] hover:bg-[#27272a] px-3.5 py-2 rounded-lg text-[#a1a1aa] hover:text-white transition-colors"
+                  onClick={() => setStep(4)}
+                  className="text-xs border border-[#27272a] bg-[#18181b] hover:bg-[#27272a] px-3 py-2 rounded-lg text-[#a1a1aa] hover:text-white transition-colors cursor-pointer"
                 >
-                  Buat Plan Baru
+                  Kembali ke Kanban
+                </button>
+                <button
+                  onClick={() => setStep(1)}
+                  className="text-xs border border-[#27272a] bg-[#18181b] hover:bg-[#27272a] px-3.5 py-2 rounded-lg text-[#a1a1aa] hover:text-white transition-colors cursor-pointer"
+                >
+                  Plan Baru
                 </button>
               </div>
             </div>
@@ -535,7 +619,7 @@ export default function App() {
                 <p className="text-xs text-[#a1a1aa]">Menuliskan executive summary, API contract, skema database, dan checklist implementasi.</p>
               </div>
             ) : (
-              <div className="bg-[#121215] border border-[#27272a] rounded-2xl p-6 sm:p-8 text-zinc-200">
+              <div className="bg-[#121215] border border-[#27272a] rounded-2xl p-6 sm:p-8 text-zinc-200 shadow-2xl">
                 <div 
                   className="prose prose-invert max-w-none prose-headings:font-bold prose-h1:text-2xl prose-h2:text-xl prose-h2:border-b prose-h2:border-zinc-800 prose-h2:pb-2 prose-h3:text-lg prose-pre:bg-[#18181b] prose-pre:border prose-pre:border-[#27272a] prose-code:text-[#ff946b]"
                   dangerouslySetInnerHTML={{ __html: marked.parse(prdMarkdown) as string }}
