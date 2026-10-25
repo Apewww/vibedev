@@ -81,7 +81,7 @@ function cleanMojibake(text: string): string {
     .replace(/\u00c2|Â/g, '');
 }
 
-// Normalize Markdown structure: fix un-marked headings, title, and clumped bullet points
+// Normalize Markdown structure: fix un-marked headings, title, clumped tables, and clumped bullet points
 function normalizeMarkdown(raw: string): string {
   let text = cleanMojibake(raw);
 
@@ -90,6 +90,17 @@ function normalizeMarkdown(raw: string): string {
 
   // Title normalization: "PRD — Title" without '#'
   text = text.replace(/^(PRD\s+[—–-].+)$/gm, '# $1');
+
+  // Fix clumped table rows: "col | | col" -> "col |\n| col" or "col | |---|..." -> "col |\n|---|..."
+  text = text.replace(/\|\s*\|\s*([^\s|])/g, '|\n| $1');
+  text = text.replace(/\|\s*\|\s*--/g, '|\n|--');
+
+  // Fix headings concatenated right after a table pipe: "... | 2.2 Kebutuhan..." -> "... |\n\n2.2 Kebutuhan..."
+  text = text.replace(/\|\s+(\d+(?:\.\d+)*\.?\s+[A-Za-z])/g, '|\n\n$1');
+
+  // Fix headings concatenated right after bullet text: "...teks. 3. Core Features" -> "...teks.\n\n3. Core Features"
+  text = text.replace(/([^\n])\s+(\d+\.\s+[A-Z][a-zA-Z\s]+)/g, '$1\n\n$2');
+  text = text.replace(/([^\n])\s+(\d+\.\d+\.?\s+[A-Z][a-zA-Z\s]+)/g, '$1\n\n$2');
 
   // Fix inline clumped bullet points: unclump any bullet starting with **, *, `, or alphanumeric
   text = text.replace(/([^\n])\s+-\s+(\*\*|\*|`|[A-Za-z0-9])/g, '$1\n- $2');
@@ -192,39 +203,30 @@ function parseChunks(raw: string): ContentChunk[] {
 
 // Convert markdown to HTML while embedding deterministic heading IDs
 function renderMarkdownWithIds(mdText: string, startIndex: { current: number }): string {
-  const lines = mdText.split('\n');
-  let inCode = false;
-  const processedLines: string[] = [];
+  // 1. Let marked parse pure Markdown with full GFM support (tables, lists, blockquotes, code blocks)
+  let html = marked.parse(mdText, { gfm: true, breaks: true }) as string;
 
-  for (const line of lines) {
-    if (line.trim().startsWith('```')) {
-      inCode = !inCode;
-      processedLines.push(line);
-      continue;
+  // 2. Post-process headings in rendered HTML to add deterministic anchor IDs for outline navigation
+  html = html.replace(/<(h[1-6])([^>]*)>(.*?)<\/\1>/gi, (_match, tag, attrs, content) => {
+    const level = parseInt(tag.charAt(1), 10);
+    const textContent = content.replace(/<[^>]+>/g, '').trim();
+
+    // Skip main document title from outline anchor index
+    if (level === 1 && textContent.toLowerCase().includes('prd')) {
+      return `<${tag}${attrs}>${content}</${tag}>`;
     }
-    if (!inCode && line.match(/^(#{1,3})\s+(.+)$/)) {
-      const match = line.match(/^(#{1,3})\s+(.+)$/)!;
-      const level = match[1].length;
-      const tag = `h${level}`;
-      const text = match[2].trim();
 
-      // If not main title, inject ID for anchor navigation
-      if (!(level === 1 && text.toLowerCase().includes('prd'))) {
-        const id = `prd-sec-${startIndex.current}`;
-        startIndex.current++;
-        processedLines.push(`<${tag} id="${id}">${text}</${tag}>`);
-      } else {
-        processedLines.push(`<${tag}>${text}</${tag}>`);
-      }
-    } else {
-      processedLines.push(line);
-    }
-  }
+    const id = `prd-sec-${startIndex.current}`;
+    startIndex.current++;
+    return `<${tag} id="${id}"${attrs}>${content}</${tag}>`;
+  });
 
-  const rawHtml = marked.parse(processedLines.join('\n'), { gfm: true, breaks: true }) as string;
-  return rawHtml
+  // 3. Wrap all <table> elements in responsive styled containers
+  html = html
     .replace(/<table/g, '<div class="table-container my-6 overflow-x-auto rounded-xl border border-[#27272a] bg-[#0c0c10]/80 shadow-lg"><table')
     .replace(/<\/table>/g, '</table></div>');
+
+  return html;
 }
 
 // Interactive Zoomable, Pannable Mermaid Diagram Card
