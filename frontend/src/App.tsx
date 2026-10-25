@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Sparkles, ArrowRight, CheckCircle2, ChevronRight, Copy, Check, 
-  Terminal, Layers, ArrowLeft, RefreshCw, LogOut, Code2
+  Sparkles, ArrowRight, CheckCircle2, Copy, Check, 
+  Terminal, Layers, ArrowLeft, RefreshCw, LogOut, Code2, 
+  HelpCircle
 } from 'lucide-react';
 import { marked } from 'marked';
+import { VibeJourney } from './components/VibeJourney';
 
 interface Question {
   id: string;
@@ -32,11 +34,16 @@ interface SubFeature {
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
-  const [step, setStep] = useState<number>(1); // 1: Landing/Idea, 2: Questions, 3: Roadmap, 4: PRD
+  const [step, setStep] = useState<number>(1); // 1: Landing/Ide, 2: Kuesioner, 3: Roadmap/Fitur, 4: PRD
   const [idea, setIdea] = useState<string>('');
   const [planId, setPlanId] = useState<string>('');
   const [title, setTitle] = useState<string>('');
   
+  // Tech stack choices (like ngodingpakeai)
+  const [frontendTech, setFrontendTech] = useState<string>('Next.js / React (TypeScript)');
+  const [backendTech, setBackendTech] = useState<string>('FastAPI / Python');
+  const [databaseTech, setDatabaseTech] = useState<string>('PostgreSQL + Prisma / SQLAlchemy');
+
   // Questionnaire state
   const [questions, setQuestions] = useState<Question[]>([]);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -97,7 +104,11 @@ export default function App() {
       const pRes = await fetch('/api/plan/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idea, language: 'id' })
+        body: JSON.stringify({ 
+          idea, 
+          language: 'id',
+          techStack: { frontend: frontendTech, backend: backendTech, database: databaseTech }
+        })
       });
       const pData = await pRes.json();
       const newPlanId = pData.planId;
@@ -176,7 +187,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#09090b] text-[#fafafa]">
+    <div className="min-h-screen flex flex-col bg-[#09090b] text-[#fafafa] selection:bg-[#ff5c20]/30 selection:text-white">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-[#27272a] bg-[#09090b]/80 backdrop-blur-md px-4 sm:px-8 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => setStep(1)}>
@@ -187,19 +198,6 @@ export default function App() {
             VibeDev <span className="text-[#ff5c20]">AI</span>
           </span>
         </div>
-
-        {/* Global Progress Bar in Header */}
-        {step > 1 && (
-          <div className="hidden md:flex items-center gap-2 text-xs text-[#a1a1aa]">
-            <span className={`px-2 py-0.5 rounded-full ${step >= 1 ? 'bg-[#ff5c20]/20 text-[#ff5c20] font-medium' : ''}`}>1. Ide</span>
-            <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
-            <span className={`px-2 py-0.5 rounded-full ${step >= 2 ? 'bg-[#ff5c20]/20 text-[#ff5c20] font-medium' : ''}`}>2. Kuesioner</span>
-            <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
-            <span className={`px-2 py-0.5 rounded-full ${step >= 3 ? 'bg-[#ff5c20]/20 text-[#ff5c20] font-medium' : ''}`}>3. Roadmap</span>
-            <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
-            <span className={`px-2 py-0.5 rounded-full ${step >= 4 ? 'bg-[#ff5c20]/20 text-[#ff5c20] font-medium' : ''}`}>4. PRD Final</span>
-          </div>
-        )}
 
         {/* Auth / Profile Area */}
         <div className="flex items-center gap-3">
@@ -214,6 +212,7 @@ export default function App() {
                   </div>
                 )}
                 <span className="font-medium text-zinc-200">{user.name}</span>
+                <span className="bg-[#ff5c20]/20 text-[#ff5c20] text-[10px] px-1.5 py-0.5 rounded font-mono font-bold">PRO</span>
               </div>
               <button 
                 onClick={handleLogout}
@@ -240,15 +239,18 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Content */}
+      {/* Stepper Progress Bar */}
+      {step > 1 && <VibeJourney currentStep={step} />}
+
+      {/* Main Container */}
       <main className="flex-1 flex flex-col justify-center max-w-5xl w-full mx-auto p-4 sm:p-6 md:p-8">
         
         {/* STEP 1: LANDING & PROMPT INPUT */}
         {step === 1 && (
-          <div className="flex flex-col items-center text-center my-auto py-12 animate-in fade-in zoom-in-95 duration-500">
+          <div className="flex flex-col items-center text-center my-auto py-10 animate-in fade-in zoom-in-95 duration-500">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[#ff5c20]/30 bg-[#ff5c20]/10 text-[#ff5c20] text-xs font-medium mb-6">
               <Sparkles className="w-3.5 h-3.5" />
-              Generator PRD Standar AI Coding Agent
+              Generator PRD Standar AI Coding Agent (Cursor, Claude Code, Windsurf)
             </div>
 
             <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight max-w-3xl leading-[1.15] mb-5">
@@ -256,7 +258,7 @@ export default function App() {
             </h1>
 
             <p className="text-base sm:text-lg text-[#a1a1aa] max-w-2xl mb-10">
-              Buat spesifikasi teknis, skema database, roadmap fitur, dan prompt prompt-engineered untuk Cursor, Claude Code, & Windsurf dalam hitungan detik.
+              Buat spesifikasi teknis, skema database, roadmap fitur, dan task execution loop untuk AI Coding Agent dalam hitungan detik.
             </p>
 
             {/* Input Form */}
@@ -266,7 +268,7 @@ export default function App() {
                   type="text"
                   value={idea}
                   onChange={(e) => setIdea(e.target.value)}
-                  placeholder="Ceritakan ide aplikasimu... (contoh: Aplikasi split-bill otomatis via Telegram)"
+                  placeholder="Ceritakan ide aplikasimu... (contoh: Aplikasi split-bill otomatis via WhatsApp)"
                   className="w-full bg-transparent px-4 py-3 text-sm sm:text-base outline-none text-white placeholder:text-zinc-600"
                   autoFocus
                 />
@@ -280,9 +282,41 @@ export default function App() {
               </div>
             </form>
 
+            {/* Tech Stack Customizer */}
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-xs text-zinc-400">
+              <span className="text-zinc-500 font-medium">Tech Stack Target:</span>
+              <select 
+                value={frontendTech} 
+                onChange={e => setFrontendTech(e.target.value)}
+                className="bg-[#18181b] border border-[#27272a] rounded px-2.5 py-1 text-zinc-300 outline-none"
+              >
+                <option value="Next.js / React (TypeScript)">Frontend: Next.js (TS)</option>
+                <option value="Vite + React (Tailwind)">Frontend: Vite + React</option>
+                <option value="Vue 3 + Nuxt">Frontend: Nuxt 3</option>
+              </select>
+              <select 
+                value={backendTech} 
+                onChange={e => setBackendTech(e.target.value)}
+                className="bg-[#18181b] border border-[#27272a] rounded px-2.5 py-1 text-zinc-300 outline-none"
+              >
+                <option value="FastAPI / Python">Backend: FastAPI (Python)</option>
+                <option value="Node.js / Express">Backend: Node.js (Express)</option>
+                <option value="Go / Gin">Backend: Go (Gin)</option>
+              </select>
+              <select 
+                value={databaseTech} 
+                onChange={e => setDatabaseTech(e.target.value)}
+                className="bg-[#18181b] border border-[#27272a] rounded px-2.5 py-1 text-zinc-300 outline-none"
+              >
+                <option value="PostgreSQL + Prisma">Database: PostgreSQL</option>
+                <option value="MongoDB + Mongoose">Database: MongoDB</option>
+                <option value="SQLite / Supabase">Database: Supabase</option>
+              </select>
+            </div>
+
             {/* Example Ideas */}
             <div className="mt-8 flex flex-wrap items-center justify-center gap-2 max-w-2xl">
-              <span className="text-xs text-zinc-600">Coba contoh:</span>
+              <span className="text-xs text-zinc-600">Coba ide:</span>
               {[
                 'Aplikasi absensi karyawan GPS & selfie anti fake-location',
                 'SaaS generator invoice & tracking status bayar via WhatsApp',
@@ -298,8 +332,8 @@ export default function App() {
               ))}
             </div>
 
-            {/* Features preview */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-20 w-full text-left">
+            {/* Feature Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-16 w-full text-left">
               <div className="p-5 rounded-xl border border-[#27272a] bg-[#121215]/50">
                 <Terminal className="w-5 h-5 text-[#ff5c20] mb-3" />
                 <h3 className="font-semibold text-sm mb-1 text-zinc-200">Kuesioner Teknis AI</h3>
@@ -321,32 +355,36 @@ export default function App() {
 
         {/* STEP 2: QUESTIONNAIRE */}
         {step === 2 && (
-          <div className="w-full max-w-2xl mx-auto py-8 animate-in fade-in duration-300">
+          <div className="w-full max-w-2xl mx-auto py-4 animate-in fade-in duration-300">
             <button 
               onClick={() => setStep(1)} 
               className="inline-flex items-center gap-1.5 text-xs text-[#a1a1aa] hover:text-white mb-6 transition-colors"
             >
-              <ArrowLeft className="w-3.5 h-3.5" /> Kembali ganti ide
+              <ArrowLeft className="w-3.5 h-3.5" /> Ganti Ide
             </button>
 
             <div className="mb-6">
-              <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Langkah 2 / 4</span>
-              <h2 className="text-2xl font-bold mt-1 text-white">Pertajam Kebutuhan Aplikasi</h2>
+              <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Spesifikasi Kebutuhan</span>
+              <h2 className="text-2xl font-bold mt-1 text-white">Pertanyaan Teknis Kunci</h2>
               <p className="text-xs sm:text-sm text-[#a1a1aa] mt-1">Ide: <span className="text-zinc-200 font-medium">"{idea}"</span></p>
             </div>
 
             {loadingQuestions ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <div className="flex flex-col items-center justify-center py-20 gap-3 bg-[#121215] border border-[#27272a] rounded-2xl">
                 <RefreshCw className="w-8 h-8 text-[#ff5c20] animate-spin" />
-                <p className="text-sm text-[#a1a1aa]">Model AI sedang menganalisis ide dan menyusun kuesioner...</p>
+                <p className="text-sm text-zinc-300 font-medium">Model 9router VibeDev sedang menganalisis ide...</p>
+                <p className="text-xs text-[#a1a1aa]">Menyusun daftar pertanyaan kuesioner terpenting untuk sistem ini.</p>
               </div>
             ) : (
               <div className="space-y-6">
                 {questions.map((q, idx) => (
                   <div key={q.id || idx} className="p-5 rounded-xl border border-[#27272a] bg-[#121215]">
-                    <label className="block text-sm font-semibold text-zinc-200 mb-3">
-                      {idx + 1}. {q.question}
-                    </label>
+                    <div className="flex items-center gap-2 mb-3">
+                      <HelpCircle className="w-4 h-4 text-[#ff5c20]" />
+                      <label className="text-sm font-semibold text-zinc-200">
+                        {idx + 1}. {q.question}
+                      </label>
+                    </div>
 
                     {q.options && q.options.length > 0 ? (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -382,7 +420,7 @@ export default function App() {
                   onClick={handleGenerateRoadmap}
                   className="w-full bg-[#ff5c20] hover:bg-[#e04f18] text-white font-medium py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#ff5c20]/20"
                 >
-                  Lanjut ke Penyusunan Fitur <ArrowRight className="w-4 h-4" />
+                  Lanjut ke Pohon Fitur & Roadmap <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
             )}
@@ -391,12 +429,12 @@ export default function App() {
 
         {/* STEP 3: ROADMAP / FEATURE TREE */}
         {step === 3 && (
-          <div className="w-full max-w-3xl mx-auto py-8 animate-in fade-in duration-300">
+          <div className="w-full max-w-3xl mx-auto py-4 animate-in fade-in duration-300">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Langkah 3 / 4</span>
-                <h2 className="text-2xl font-bold mt-1 text-white">{title || 'Pohon Fitur & Roadmap'}</h2>
-                <p className="text-xs sm:text-sm text-[#a1a1aa] mt-0.5">Struktur modul yang telah dirancang untuk sistem ini</p>
+                <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Pohon Fitur Produk</span>
+                <h2 className="text-2xl font-bold mt-1 text-white">{title || 'Arsitektur Fitur'}</h2>
+                <p className="text-xs sm:text-sm text-[#a1a1aa] mt-0.5">Daftar modul fitur utama dan sub-fitur modular</p>
               </div>
               <button 
                 onClick={() => setStep(2)} 
@@ -407,16 +445,17 @@ export default function App() {
             </div>
 
             {loadingRoadmap ? (
-              <div className="flex flex-col items-center justify-center py-20 gap-3">
+              <div className="flex flex-col items-center justify-center py-20 gap-3 bg-[#121215] border border-[#27272a] rounded-2xl">
                 <RefreshCw className="w-8 h-8 text-[#ff5c20] animate-spin" />
-                <p className="text-sm text-[#a1a1aa]">Principal Architect AI sedang memecah fitur dan sub-fitur...</p>
+                <p className="text-sm text-zinc-300 font-medium">Principal Architect AI sedang memecah pohon fitur...</p>
+                <p className="text-xs text-[#a1a1aa]">Mengelompokkan sub-fitur, dependensi, dan prioritas sprint.</p>
               </div>
             ) : (
               <div className="space-y-4 mb-8">
                 {features.map((feat) => {
                   const subs = subFeatures.filter(s => s.featureId === feat.id);
                   return (
-                    <div key={feat.id} className="border border-[#27272a] bg-[#121215] rounded-xl p-5">
+                    <div key={feat.id} className="border border-[#27272a] bg-[#121215] rounded-xl p-5 hover:border-zinc-700 transition-all">
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-lg bg-[#ff5c20]/10 border border-[#ff5c20]/20 flex items-center justify-center text-[#ff5c20]">
@@ -427,7 +466,7 @@ export default function App() {
                             <p className="text-xs text-[#a1a1aa] mt-0.5">{feat.summary}</p>
                           </div>
                         </div>
-                        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
+                        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700 uppercase">
                           {feat.priority || 'high'}
                         </span>
                       </div>
@@ -463,11 +502,11 @@ export default function App() {
 
         {/* STEP 4: FINAL PRD VIEWER */}
         {step === 4 && (
-          <div className="w-full max-w-4xl mx-auto py-8 animate-in fade-in duration-300">
+          <div className="w-full max-w-4xl mx-auto py-4 animate-in fade-in duration-300">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <div>
-                <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">Langkah 4 / 4 — Selesai</span>
-                <h2 className="text-2xl font-bold mt-1 text-white">Product Requirement Document (PRD)</h2>
+                <span className="text-xs font-mono text-[#ff5c20] font-semibold tracking-wider uppercase">PRD & Engineering Spec</span>
+                <h2 className="text-2xl font-bold mt-1 text-white">Product Requirement Document</h2>
                 <p className="text-xs sm:text-sm text-[#a1a1aa]">Dokumen siap tempel langsung ke AI coding agent.</p>
               </div>
 
