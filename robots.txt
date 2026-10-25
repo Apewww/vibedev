@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /onboarding
+Disallow: /plan
+Disallow: /plans/
+Disallow: /settings
+Disallow: /sign-in
+Disallow: /sign-up
+
+Sitemap: https://www.ngodingpakeai.com/sitemap.xml

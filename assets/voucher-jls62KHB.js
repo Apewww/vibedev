@@ -1,0 +1,1 @@
+function r(e){if(!e)return null;const t=new Date(e).getTime()-Date.now();if(t<=0)return null;const a=Math.ceil(t/864e5);return a<=7?a===1?"Berlaku sampai besok":`Sisa ${a} hari`:`Berlaku sampai ${new Date(e).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}`}export{r as v};
