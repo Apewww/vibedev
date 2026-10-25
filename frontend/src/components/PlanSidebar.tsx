@@ -69,7 +69,7 @@ export const PlanSidebar: React.FC<PlanSidebarProps> = ({
               <img 
                 src="/logo.png" 
                 alt="VibeDev Logo" 
-                className="w-7 h-7 rounded-lg object-contain shadow-sm shadow-[#ff5c20]/20" 
+                className="w-7 h-7 rounded-lg object-contain" 
               />
               <span className="font-bold tracking-tight text-white font-mono text-sm">
                 VibeDev <span className="text-[#ff5c20]">AI</span>

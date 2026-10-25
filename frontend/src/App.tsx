@@ -450,10 +450,10 @@ export default function App() {
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={() => setSidebarOpen(true)}
-            className="p-1.5 rounded-lg border border-[#27272a] bg-[#121215] hover:bg-[#1f1f24] text-zinc-300 hover:text-white transition-colors cursor-pointer shrink-0"
+            className="p-1.5 rounded-lg hover:bg-zinc-800/60 text-zinc-400 hover:text-white transition-colors cursor-pointer shrink-0"
             title="Buka Menu Riwayat PRD"
           >
-            <Menu className="w-4 h-4" />
+            <Menu className="w-5 h-5" />
           </button>
 
           <div 
@@ -464,7 +464,7 @@ export default function App() {
             <img 
               src="/logo.png" 
               alt="VibeDev AI Logo" 
-              className="w-8 h-8 rounded-lg object-contain shadow-md shadow-[#ff5c20]/25" 
+              className="w-8 h-8 rounded-lg object-contain" 
             />
             <span className="font-bold tracking-tight text-base text-white font-mono hidden md:inline">
               VibeDev <span className="text-[#ff5c20]">AI</span>
@@ -574,13 +574,7 @@ export default function App() {
           <div className="flex flex-col my-auto py-8 animate-in fade-in zoom-in-95 duration-400">
             {/* If no questions generated yet, show prompt input */}
             {questions.length === 0 ? (
-              <div className="flex flex-col items-center text-center max-w-3xl mx-auto">
-                {/* Branding Badge */}
-                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[#ff5c20]/30 bg-[#ff5c20]/10 text-[#ff5c20] text-xs font-semibold mb-6 shadow-sm">
-                  <img src="/logo.png" alt="VibeDev" className="w-4 h-4 object-contain" />
-                  <span>VibeDev AI • Free Generator PRD &amp; Task Pipeline</span>
-                </div>
-
+              <div className="flex flex-col items-center text-center max-w-3xl mx-auto py-8">
                 <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight max-w-2xl leading-[1.2] mb-4">
                   Dari Ide Jadi <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#ff5c20] to-[#ff946b]">Flow Map, Task, &amp; PRD</span> Siap Pakai.
                 </h1>
