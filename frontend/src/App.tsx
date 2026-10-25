@@ -531,15 +531,6 @@ export default function App() {
           )}
         </div>
 
-        {/* Center: 3-Step Journey Stepper (Strictly Centered horizontally) */}
-        <div className="absolute left-1/2 -translate-x-1/2 hidden md:block pointer-events-auto">
-          <VibeJourney
-            currentStep={step}
-            maxStepReached={maxStepReached}
-            onSelectStep={(targetStep) => setStep(targetStep)}
-          />
-        </div>
-
         {/* Right: Actions, Quota Counter & Profile */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
           {/* Agent Checkpoint Bridge Button (Active on Step 3) */}
@@ -605,8 +596,8 @@ export default function App() {
 
       {/* Main Responsive Canvas - Full Width */}
       <main className="flex-1 flex flex-col w-full px-4 sm:px-6 lg:px-8 py-5">
-        {/* Mobile Journey Stepper Bar */}
-        <div className="sm:hidden mb-4">
+        {/* Pipeline Stepper - Clean, Centered inside Main Content */}
+        <div className="w-full flex items-center justify-center pb-5 mb-5 border-b border-[#27272a]/60">
           <VibeJourney
             currentStep={step}
             maxStepReached={maxStepReached}

@@ -78,6 +78,7 @@ def call_llm(messages: list, response_json: bool = True) -> str:
         raise HTTPException(status_code=500, detail=f"LLM Gateway Error: {res.text}")
     
     # 9router response handling (standard or SSE format)
+    res.encoding = "utf-8"
     raw = res.text
     if raw.startswith("data:"):
         # Accumulate SSE chunks
@@ -475,25 +476,42 @@ Nama Proyek: __TITLE__
 Ide Dasar: __IDEA__
 Pohon Modul Fitur: __FEATURES__
 
+ATURAN FORMAT DOKUMEN (SANGAT PENTING):
+1. Wajib gunakan format Heading Markdown resmi: # untuk Judul Utama (# PRD — __TITLE__), ## untuk Bab (Level 2), ### untuk Sub-bab (Level 3).
+2. Setiap butir poin list (-) WAJIB ditulis pada baris baru terpisah (DILARANG menggabungkan beberapa tanda '-' dalam satu paragraf/baris).
+3. Gunakan Tabel Markdown (GFM Table) yang rapi untuk Requirements Matrix (Kode FR, Modul, Deskripsi Kebutuhan, Prioritas), Skema Database, dan Endpoint API.
+4. Gunakan diagram Mermaid yang valid (Sequence Diagram & ER Diagram).
+
 Wajib ikuti struktur 7 bab standar berikut secara presisi:
 # PRD — __TITLE__
 
 ## 1. Overview
-Ringkasan eksekutif, latar belakang masalah, nilai proposisi, dan tujuan utama aplikasi.
+- **Ringkasan Eksekutif**: Ringkasan produk dan target pengguna.
+- **Latar Belakang Masalah**: Masalah nyata yang diselesaikan.
+- **Nilai Proposisi**: Keunggulan kompetitif unik.
+- **Tujuan Utama**: Metrik keberhasilan aplikasi.
 
 ## 2. Requirements
-### 2.1 Fungsional
-Rincian kapabilitas spesifik yang harus dapat dilakukan oleh pengguna dan sistem.
-### 2.2 Non-Fungsional
-Aspek performa (<200ms latency), keamanan (JWT/OAuth & sanitasi input), ketersediaan, dan reliabilitas.
+### 2.1 Kebutuhan Fungsional
+Buat tabel GFM Requirements Matrix lengkap:
+| Kode FR | Modul | Deskripsi Kebutuhan | Prioritas | Acceptance Criteria |
+|---|---|---|---|---|
+| FR-001 | Modul Inti | Deskripsi fitur... | High | Kriteria pengujian... |
+
+### 2.2 Kebutuhan Non-Fungsional
+- **Performa**: Latensi API P95 < 200ms, Core Web Vitals LCP < 1.5 detik.
+- **Keamanan**: Autentikasi JWT/OAuth, sanitasi DOMPurify / SQL parameterization.
+- **Ketersediaan**: Target SLA 99.9%, database connection pooling.
 
 ## 3. Core Features
 Pecah setiap modul fitur dari input di atas menjadi spesifikasi teknis mendalam dengan sub-fitur dan acceptance criteria.
 Format tiap fitur:
 ### 3.1 [Nama Modul]
-- Deskripsi & Nilai Tambah
-- Sub-Fitur & Spesifikasi Teknis
-- Validasi & Edge Cases
+- **Deskripsi & Nilai Tambah**: Penjelasan fungsi bisnis modul.
+- **Sub-Fitur & Spesifikasi Teknis**:
+  - *Sub-fitur 1*: Detail implementasi teknis.
+  - *Sub-fitur 2*: Detail implementasi teknis.
+- **Validasi & Edge Cases**: Penanganan skenario kegagalan atau input abnormal.
 
 ## 4. User Flow
 Langkah-langkah interaksi pengguna end-to-end dari landing page/auth hingga eksekusi alur utama dan umpan balik sistem.
@@ -520,8 +538,7 @@ sequenceDiagram
 
 ## 6. Database Schema
 Penyimpanan relational terpusat yang terstruktur dan hemat query.
-WAJIB sertakan diagram ERD Mermaid yang valid serta tabel ringkasan entitas & kolom kunci (Nama Kolom, Tipe Data, Keterangan).
-Contoh:
+WAJIB sertakan diagram ERD Mermaid yang valid serta tabel kamus data lengkap:
 ```mermaid
 erDiagram
     USERS ||--o{ ITEMS : owns
@@ -533,11 +550,25 @@ erDiagram
     }
 ```
 
+Tabel Relasi & Kamus Data:
+| Nama Tabel | Kolom Kunci | Tipe Data | Constraint | Deskripsi & Relasi |
+|---|---|---|---|---|
+| users | id | UUID | PRIMARY KEY | ID unik pengguna |
+
 ## 7. Tech Stack & Constraints
-### 7.1 Pilihan Teknologi
-Frontend framework, Backend, Database, Styling, dan Layanan Pihak Ketiga.
-### 7.2 Batasan Teknis & Panduan Coding Agent
-Instruksi tegas bagi coding agent: wajib memprioritaskan pembuatan Frontend Mock UI terlebih dahulu sebelum integrasi backend, penanganan error terpusat, dan penulisan kode modular.
+### 7.1 Rekomendasi Tech Stack
+Tabel Pilihan Teknologi:
+| Layer | Teknologi | Alasan Pemilihan |
+|---|---|---|
+| Frontend | Next.js / Vite React | Performa tinggi, SSR/CSR fleksibel |
+| Styling | TailwindCSS | Kecepatan iterasi dan konsistensi token |
+| Database | PostgreSQL (Supabase) | Relational integrity, auth built-in |
+
+### 7.2 Panduan Eksekusi AI Coding Agent
+Instruksi tegas bagi coding agent (Cursor, Windsurf, Claude Code):
+- Wajib memprioritaskan pembuatan Frontend Mock UI dan State Management terlebih dahulu.
+- Error handling terpusat dengan toast notifikasi interaktif.
+- Struktur kode modular dan clean architecture.
 """.replace("__TITLE__", plan.get("title", "Project Plan")).replace("__IDEA__", str(idea)).replace("__FEATURES__", json.dumps(features, ensure_ascii=False))
 
     prd_md = call_llm([{"role": "user", "content": prompt}], response_json=False)

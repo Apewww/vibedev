@@ -60,9 +60,54 @@ mermaid.initialize({
   }
 });
 
+// Configure marked options
+marked.setOptions({
+  gfm: true,
+  breaks: true
+});
+
+// Clean UTF-8 mojibake (e.g. \u00e2\u0080\u0094 into em-dash)
+function cleanMojibake(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/\u00e2\u0080\u0094|â€”/g, '—')
+    .replace(/\u00e2\u0080\u0093|â€“/g, '–')
+    .replace(/\u00e2\u0080\u0098|â€˜/g, '‘')
+    .replace(/\u00e2\u0080\u0099|â€™/g, '’')
+    .replace(/\u00e2\u0080\u009c|â€œ/g, '“')
+    .replace(/\u00e2\u0080\u009d|â€ /g, '”')
+    .replace(/\u00e2\u0080\u00a2|â€¢/g, '•')
+    .replace(/\u00e2\u0080\u00a6|â€¦/g, '…')
+    .replace(/\u00c2|Â/g, '');
+}
+
+// Normalize Markdown structure: fix un-marked headings, title, and clumped bullet points
+function normalizeMarkdown(raw: string): string {
+  let text = cleanMojibake(raw);
+
+  // Normalize line endings
+  text = text.replace(/\r\n/g, '\n');
+
+  // Title normalization: "PRD — Title" without '#'
+  text = text.replace(/^(PRD\s+[—–-].+)$/gm, '# $1');
+
+  // Fix inline clumped bullet points: unclump any bullet starting with **, *, `, or alphanumeric
+  text = text.replace(/([^\n])\s+-\s+(\*\*|\*|`|[A-Za-z0-9])/g, '$1\n- $2');
+
+  // Normalize un-hashed numbered headings: "1. Overview" -> "## 1. Overview"
+  text = text.replace(/^(?<!#\s*)(\d+)\.\s+([A-Za-z].+)$/gm, '## $1. $2');
+  // "2.1 Fungsional" -> "### 2.1 Fungsional"
+  text = text.replace(/^(?<!#\s*)(\d+\.\d+)\.?\s+([A-Za-z].+)$/gm, '### $1 $2');
+  // "2.1.1 Sub-item" -> "#### $1 $2"
+  text = text.replace(/^(?<!#\s*)(\d+\.\d+\.\d+)\.?\s+([A-Za-z].+)$/gm, '#### $1 $2');
+
+  return text;
+}
+
 // Clean and extract headings from Markdown for Outline
 function extractOutline(mdText: string): OutlineItem[] {
-  const lines = mdText.split('\n');
+  const normalized = normalizeMarkdown(mdText);
+  const lines = normalized.split('\n');
   const items: OutlineItem[] = [];
   let inCodeBlock = false;
   let counter = 0;
@@ -78,17 +123,24 @@ function extractOutline(mdText: string): OutlineItem[] {
     if (match) {
       const level = match[1].length;
       const rawText = match[2].trim();
+
+      // Skip the main document title (level 1 PRD)
+      if (level === 1 && rawText.toLowerCase().includes('prd')) {
+        continue;
+      }
+
       const cleanText = rawText
         .replace(/`([^`]+)`/g, '$1')
         .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
         .replace(/\*\*([^*]+)\*\*/g, '$1')
         .replace(/\*([^*]+)\*/g, '$1')
-        .replace(/^PRD\s*[:—–-]\s*/i, '')
         .trim();
 
-      const id = `prd-sec-${counter}`;
-      items.push({ id, text: cleanText, level });
-      counter++;
+      if (cleanText) {
+        const id = `prd-sec-${counter}`;
+        items.push({ id, text: cleanText, level });
+        counter++;
+      }
     }
   }
 
@@ -97,7 +149,8 @@ function extractOutline(mdText: string): OutlineItem[] {
 
 // Split text into Markdown text and Mermaid code blocks
 function parseChunks(raw: string): ContentChunk[] {
-  const lines = raw.split('\n');
+  const normalized = normalizeMarkdown(raw);
+  const lines = normalized.split('\n');
   const chunks: ContentChunk[] = [];
   let currentMd: string[] = [];
   let inMermaid = false;
@@ -139,7 +192,6 @@ function parseChunks(raw: string): ContentChunk[] {
 
 // Convert markdown to HTML while embedding deterministic heading IDs
 function renderMarkdownWithIds(mdText: string, startIndex: { current: number }): string {
-  // Replace headings with explicit ID tags before running marked
   const lines = mdText.split('\n');
   let inCode = false;
   const processedLines: string[] = [];
@@ -152,17 +204,27 @@ function renderMarkdownWithIds(mdText: string, startIndex: { current: number }):
     }
     if (!inCode && line.match(/^(#{1,3})\s+(.+)$/)) {
       const match = line.match(/^(#{1,3})\s+(.+)$/)!;
-      const tag = `h${match[1].length}`;
+      const level = match[1].length;
+      const tag = `h${level}`;
       const text = match[2].trim();
-      const id = `prd-sec-${startIndex.current}`;
-      startIndex.current++;
-      processedLines.push(`<${tag} id="${id}">${text}</${tag}>`);
+
+      // If not main title, inject ID for anchor navigation
+      if (!(level === 1 && text.toLowerCase().includes('prd'))) {
+        const id = `prd-sec-${startIndex.current}`;
+        startIndex.current++;
+        processedLines.push(`<${tag} id="${id}">${text}</${tag}>`);
+      } else {
+        processedLines.push(`<${tag}>${text}</${tag}>`);
+      }
     } else {
       processedLines.push(line);
     }
   }
 
-  return marked.parse(processedLines.join('\n'), { gfm: true, breaks: true }) as string;
+  const rawHtml = marked.parse(processedLines.join('\n'), { gfm: true, breaks: true }) as string;
+  return rawHtml
+    .replace(/<table/g, '<div class="table-container my-6 overflow-x-auto rounded-xl border border-[#27272a] bg-[#0c0c10]/80 shadow-lg"><table')
+    .replace(/<\/table>/g, '</table></div>');
 }
 
 // Interactive Zoomable, Pannable Mermaid Diagram Card
@@ -331,14 +393,15 @@ export const PrdPreview: React.FC<PrdPreviewProps> = ({
 
   // Copy Markdown
   const handleCopy = () => {
-    navigator.clipboard.writeText(content);
+    navigator.clipboard.writeText(cleanMojibake(content));
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   // Download .md
   const handleDownload = () => {
-    const blob = new Blob([content], { type: 'text/markdown;charset=utf-8;' });
+    const cleanContent = cleanMojibake(content);
+    const blob = new Blob([cleanContent], { type: 'text/markdown;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -429,7 +492,7 @@ export const PrdPreview: React.FC<PrdPreviewProps> = ({
       </div>
 
       {/* Main 2-Column Document Layout (Sticky Outline Sidebar on Left + Content on Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)] gap-8 items-start">
+      <div className={`grid grid-cols-1 ${outline.length > 0 ? 'lg:grid-cols-[250px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]' : ''} gap-8 items-start`}>
         {/* Left: Sticky DAFTAR ISI (OUTLINE) Sidebar matching ngodingpakeai */}
         {outline.length > 0 && (
           <aside className="hidden lg:block sticky top-20 self-start">
@@ -452,9 +515,9 @@ export const PrdPreview: React.FC<PrdPreviewProps> = ({
                       type="button"
                       onClick={() => scrollToHeading(item.id)}
                       className={`group flex w-full items-center gap-2 py-1.5 text-left text-xs transition-colors cursor-pointer ${
-                        item.level === 1 
+                        item.level === 1 || item.level === 2
                           ? 'pl-0 font-bold text-zinc-200 hover:text-white' 
-                          : item.level === 2 
+                          : item.level === 3 
                           ? 'pl-3 font-medium text-zinc-400 hover:text-zinc-200' 
                           : 'pl-6 text-[11px] text-zinc-500 hover:text-zinc-300'
                       } ${isActive ? 'text-[#ff5c20] font-semibold' : ''}`}
@@ -495,12 +558,14 @@ export const PrdPreview: React.FC<PrdPreviewProps> = ({
                     prose-h2:text-xl prose-h2:border-b prose-h2:border-zinc-800/60 prose-h2:pb-2.5 prose-h2:mt-8 prose-h2:mb-4 prose-h2:text-zinc-100
                     prose-h3:text-base prose-h3:mt-6 prose-h3:mb-2 prose-h3:text-[#ff5c20]
                     prose-p:my-3 prose-p:leading-relaxed
-                    prose-ul:my-3 prose-li:my-1
+                    prose-ul:my-4 prose-ul:space-y-1.5 prose-li:my-1 prose-li:leading-relaxed
+                    prose-strong:text-zinc-100 prose-strong:font-semibold
                     prose-code:text-[#ff7a45] prose-code:bg-zinc-900 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:text-xs prose-code:before:content-none prose-code:after:content-none
                     prose-pre:bg-[#0c0c10] prose-pre:border prose-pre:border-[#27272a] prose-pre:rounded-xl prose-pre:p-4 prose-pre:my-4
-                    prose-table:w-full prose-table:border-collapse prose-table:my-5
-                    prose-th:border prose-th:border-zinc-800 prose-th:bg-zinc-900/90 prose-th:p-3 prose-th:text-left prose-th:text-xs prose-th:font-bold prose-th:text-white
-                    prose-td:border prose-td:border-zinc-800/80 prose-td:p-3 prose-td:text-xs prose-td:text-zinc-300"
+                    [&_.table-container]:w-full [&_.table-container]:overflow-x-auto
+                    [&_table]:w-full [&_table]:border-collapse [&_table]:my-0
+                    [&_thead]:bg-[#18181f] [&_th]:border-b [&_th]:border-[#27272a] [&_th]:px-4 [&_th]:py-3 [&_th]:text-left [&_th]:text-xs [&_th]:font-bold [&_th]:text-white [&_th]:tracking-wider
+                    [&_td]:border-b [&_td]:border-[#27272a]/60 [&_td]:px-4 [&_td]:py-3 [&_td]:text-xs [&_td]:text-zinc-300 [&_tr:last-child_td]:border-b-0 [&_tr:nth-child(even)]:bg-[#141419] [&_tr:hover]:bg-zinc-800/40"
                   dangerouslySetInnerHTML={{ __html: htmlContent }}
                 />
               );
@@ -516,7 +581,7 @@ export const PrdPreview: React.FC<PrdPreviewProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-[#ff5c20]" />
-                <h3 className="font-bold text-sm text-white">Instruksi Revisi Dokumen PRD</h3>
+                <h3 className="font-bold text-sm text-white">Instruksi AI Revisi PRD</h3>
               </div>
               <button 
                 onClick={() => setShowRevisionModal(false)}
@@ -535,7 +600,7 @@ export const PrdPreview: React.FC<PrdPreviewProps> = ({
                 rows={4}
                 value={revisionPrompt}
                 onChange={(e) => setRevisionPrompt(e.target.value)}
-                placeholder="Contoh: Tambahkan modul integrasi WhatsApp OTP, ganti database ke PostgreSQL Supabase, dan perjelas alur checkout..."
+                placeholder="Contoh: Tambahkan webhook Midtrans untuk verifikasi otomatis status pembayaran, ganti database ke PostgreSQL Supabase, dan perjelas alur checkout..."
                 className="w-full bg-[#18181b] border border-[#27272a] focus:border-[#ff5c20] rounded-xl p-3 text-xs text-white placeholder-zinc-600 outline-none transition-all"
                 autoFocus
               />

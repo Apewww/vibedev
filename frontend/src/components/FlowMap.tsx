@@ -68,16 +68,16 @@ export const FlowMap: React.FC<FlowMapProps> = ({
   const [showHint, setShowHint] = useState<boolean>(true);
 
   // Canvas pan and zoom state
-  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 60, y: 30 });
-  const [zoom, setZoom] = useState<number>(0.95);
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 50, y: 30 });
+  const [zoom, setZoom] = useState<number>(0.88);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const canvasRef = useRef<HTMLDivElement>(null);
 
   // Center nodes on reset
   const handleFitView = useCallback(() => {
-    setPan({ x: 60, y: 30 });
-    setZoom(0.95);
+    setPan({ x: 50, y: 30 });
+    setZoom(0.88);
   }, []);
 
   const handleZoomIn = () => setZoom(prev => Math.min(1.6, Number((prev + 0.1).toFixed(2))));
@@ -117,15 +117,15 @@ export const FlowMap: React.FC<FlowMapProps> = ({
     }
   };
 
-  // Node Layout Dimensions
-  const ROOT_X = 40;
-  const FEAT_X = 380;
-  const SUB_X = 730;
+  // Node Layout Dimensions with generous breathing room
+  const ROOT_X = 60;
+  const FEAT_X = 420;
+  const SUB_X = 820;
   const NODE_W = 260;
-  const ROW_GAP = 135;
+  const ROW_GAP = 180;
 
   const totalRows = Math.max(features.length, 3);
-  const rootCenterY = Math.max(120, (totalRows * ROW_GAP) / 2 - 25);
+  const rootCenterY = Math.max(120, (totalRows * ROW_GAP) / 2 - 35);
 
   return (
     <div className="w-full space-y-3 animate-in fade-in duration-300">
@@ -688,21 +688,6 @@ export const FlowMap: React.FC<FlowMapProps> = ({
           </div>
         </div>
       )}
-
-      {/* Primary Action Button to Continue to Stage 3 */}
-      <div className="flex items-center justify-between pt-2">
-        <p className="text-xs text-zinc-500">
-          Klik tombol di sebelah kanan untuk menyusun Dokumen PRD dan Task Kanban otomatis.
-        </p>
-
-        <button
-          onClick={onContinue}
-          className="flex items-center gap-2 px-6 py-3 rounded-xl bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold transition-all shadow-lg shadow-[#ff5c20]/25 cursor-pointer"
-        >
-          <span>Generate Dokumen PRD &amp; Task</span>
-          <ArrowRight className="w-4 h-4" />
-        </button>
-      </div>
     </div>
   );
 };
