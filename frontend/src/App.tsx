@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   ArrowRight, Copy, Check, ArrowLeft, RefreshCw, 
   Menu, Sparkles, Terminal, FileText, Cpu, 
-  MessageSquare, Layers
+  MessageSquare, Layers, GitFork, CheckCircle2 
 } from 'lucide-react';
 import { marked } from 'marked';
 import { VibeJourney } from './components/VibeJourney';
@@ -35,7 +35,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [savedPlans, setSavedPlans] = useState<SavedPlan[]>([]);
 
-  // Pipeline Navigation State (1: Struktur/Ide, 2: Rencana/PRD, 3: Fitur/Task)
+  // Pipeline Navigation State (1: Ide & Kuis, 2: PRD Spec, 3: Dokumen PRD + Task)
   const [step, setStep] = useState<number>(1);
   const [maxStepReached, setMaxStepReached] = useState<number>(1);
 
@@ -49,19 +49,20 @@ export default function App() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [loadingQuestions, setLoadingQuestions] = useState<boolean>(false);
 
-  // Step 2: PRD & Flow Map state
-  const [prdViewMode, setPrdViewMode] = useState<'prd' | 'flow'>('prd');
+  // Step 2: PRD Spec (Roadmap & Feature Tree) state
   const [features, setFeatures] = useState<FeatureNode[]>([]);
+  const [loadingSpec, setLoadingSpec] = useState<boolean>(false);
+  const [specViewMode, setSpecViewMode] = useState<'flow' | 'cards'>('flow');
+
+  // Step 3: Dokumen PRD + Task state
+  const [step3SubTab, setStep3SubTab] = useState<'prd' | 'tasks'>('prd');
   const [prdMarkdown, setPrdMarkdown] = useState<string>('');
-  const [loadingPrd, setLoadingPrd] = useState<boolean>(false);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [loadingFinalPipeline, setLoadingFinalPipeline] = useState<boolean>(false);
   const [copiedPrd, setCopiedPrd] = useState<boolean>(false);
   const [showRevision, setShowRevision] = useState<boolean>(false);
   const [revisionPrompt, setRevisionPrompt] = useState<string>('');
   const [revisingPrd, setRevisingPrd] = useState<boolean>(false);
-
-  // Step 3: Tasks state
-  const [tasks, setTasks] = useState<TaskItem[]>([]);
-  const [loadingTasks, setLoadingTasks] = useState<boolean>(false);
 
   // Modals state
   const [showPricing, setShowPricing] = useState<boolean>(false);
@@ -96,7 +97,6 @@ export default function App() {
       const res = await fetch('/api/plan/list');
       const data = await res.json();
       if (data && Array.isArray(data.plans)) {
-        // Sort newest first
         const sorted = data.plans.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
         setSavedPlans(sorted);
       }
@@ -131,8 +131,8 @@ export default function App() {
     setIdea('');
     setQuestions([]);
     setAnswers({});
-    setPrdMarkdown('');
     setFeatures([]);
+    setPrdMarkdown('');
     setTasks([]);
     setStep(1);
     setMaxStepReached(1);
@@ -167,16 +167,15 @@ export default function App() {
       setTasks(p.tasks || []);
 
       // Determine step
-      if (p.tasks && p.tasks.length > 0) {
+      if (p.generatedPrd || (p.tasks && p.tasks.length > 0)) {
         setStep(3);
         setMaxStepReached(3);
-      } else if (p.generatedPrd) {
+      } else if (rawFeats.length > 0) {
         setStep(2);
         setMaxStepReached(2);
       } else {
         setStep(1);
         setMaxStepReached(1);
-        // Load questions if not generated yet
         loadQuestionsForPlan(p.planId || p.id);
       }
     } catch (e) {
@@ -237,9 +236,9 @@ export default function App() {
     }
   };
 
-  // STEP 1 -> STEP 2: Submit questions answers -> Generate Feature Roadmap & Full PRD
-  const handleGeneratePRD = async () => {
-    setLoadingPrd(true);
+  // STEP 1 -> STEP 2: Submit questions answers -> Generate PRD Spec (Feature Roadmap & Architecture Tree)
+  const handleGeneratePRDSpec = async () => {
+    setLoadingSpec(true);
     setStep(2);
     setMaxStepReached(prev => Math.max(prev, 2));
 
@@ -267,8 +266,23 @@ export default function App() {
         subFeatures: rawSubs.filter(s => s.featureId === f.id)
       }));
       setFeatures(featureTree);
+      fetchSavedPlans();
+    } catch (err) {
+      console.error(err);
+      alert('Terjadi kesalahan menyusun PRD Spec.');
+    } finally {
+      setLoadingSpec(false);
+    }
+  };
 
-      // 3. Generate comprehensive PRD
+  // STEP 2 -> STEP 3: From PRD Spec -> Generate Comprehensive Dokumen PRD + Task Pipeline
+  const handleGeneratePRDAndTasks = async () => {
+    setLoadingFinalPipeline(true);
+    setStep(3);
+    setMaxStepReached(prev => Math.max(prev, 3));
+
+    try {
+      // 1. Generate full PRD markdown
       const prdRes = await fetch('/api/plan/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -277,16 +291,25 @@ export default function App() {
       const prdData = await prdRes.json();
       setPrdMarkdown(prdData.content || '');
 
+      // 2. Generate phased Kanban tasks
+      const tRes = await fetch('/api/plan/tasks/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId })
+      });
+      const tData = await tRes.json();
+      setTasks(tData.tasks || []);
+
       fetchSavedPlans();
     } catch (err) {
       console.error(err);
-      alert('Terjadi kesalahan menyusun PRD.');
+      alert('Terjadi kesalahan membuat Dokumen PRD dan Task.');
     } finally {
-      setLoadingPrd(false);
+      setLoadingFinalPipeline(false);
     }
   };
 
-  // Revise PRD
+  // Revise PRD via AI prompt
   const handleRevisePRD = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!revisionPrompt.trim()) return;
@@ -308,29 +331,6 @@ export default function App() {
       alert('Gagal merevisi PRD');
     } finally {
       setRevisingPrd(false);
-    }
-  };
-
-  // STEP 2 -> STEP 3: Generate Kanban Tasks
-  const handleProceedToTasks = async () => {
-    setLoadingTasks(true);
-    setStep(3);
-    setMaxStepReached(prev => Math.max(prev, 3));
-
-    try {
-      const tRes = await fetch('/api/plan/tasks/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planId })
-      });
-      const tData = await tRes.json();
-      setTasks(tData.tasks || []);
-      fetchSavedPlans();
-    } catch (err) {
-      console.error(err);
-      alert('Gagal memproses task implementation.');
-    } finally {
-      setLoadingTasks(false);
     }
   };
 
@@ -412,14 +412,14 @@ export default function App() {
                 {title}
               </span>
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 shrink-0">
-                {step === 1 ? 'Struktur' : step === 2 ? 'PRD' : 'Task'}
+                {step === 1 ? '1. Ide & Kuis' : step === 2 ? '2. PRD Spec' : '3. Dokumen PRD + Task'}
               </span>
             </div>
           )}
         </div>
 
-        {/* Center: 3-Step Journey Stepper */}
-        <div className="flex-1 max-w-md mx-auto hidden sm:block">
+        {/* Center: 3-Step Journey Stepper (Ide & Kuis -> PRD Spec -> Dokumen PRD + Task) */}
+        <div className="flex-1 max-w-lg mx-auto hidden sm:block">
           <VibeJourney
             currentStep={step}
             maxStepReached={maxStepReached}
@@ -429,8 +429,8 @@ export default function App() {
 
         {/* Right: Actions, Upgrade & Profile */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          {/* Agent Checkpoint Bridge Button (Active on Step 2 & 3) */}
-          {step >= 2 && (
+          {/* Agent Checkpoint Bridge Button (Active on Step 3) */}
+          {step === 3 && (
             <button
               onClick={() => {
                 if (!isPro) {
@@ -497,7 +497,7 @@ export default function App() {
         </div>
 
         {/* ======================================================== */}
-        {/* STAGE 1: STRUKTUR (Ide & 5 Clarification Questions)     */}
+        {/* TAHAP 1: IDE DAN KUIS (Input Ide & 5 Pertanyaan Teknis)  */}
         {/* ======================================================== */}
         {step === 1 && (
           <div className="flex flex-col my-auto py-8 animate-in fade-in zoom-in-95 duration-400">
@@ -542,10 +542,10 @@ export default function App() {
               /* If questions are ready, display the 5 questions questionnaire */
               <div className="w-full max-w-3xl mx-auto space-y-6">
                 <div className="border-b border-[#27272a] pb-4">
-                  <span className="text-xs font-mono uppercase tracking-wider text-[#ff5c20] font-bold">Tahap 1: Struktur</span>
-                  <h2 className="text-2xl font-bold text-white mt-1">Spesifikasi Detail &amp; Kuesioner Teknis</h2>
+                  <span className="text-xs font-mono uppercase tracking-wider text-[#ff5c20] font-bold">Tahap 1: Ide &amp; Kuis</span>
+                  <h2 className="text-2xl font-bold text-white mt-1">Kuesioner Klarifikasi Arsitektur</h2>
                   <p className="text-xs text-zinc-400 mt-1">
-                    Jawab pertanyaan di bawah atau klik rekomendasi agar dokumen PRD presisi dengan kebutuhan teknis Anda.
+                    Jawab 5 pertanyaan terarah di bawah atau klik pill rekomendasi agar modul arsitektur dan PRD presisi.
                   </p>
                 </div>
 
@@ -613,18 +613,18 @@ export default function App() {
                   </button>
 
                   <button
-                    onClick={handleGeneratePRD}
-                    disabled={loadingPrd}
+                    onClick={handleGeneratePRDSpec}
+                    disabled={loadingSpec}
                     className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold shadow-lg shadow-[#ff5c20]/25 transition-all cursor-pointer disabled:opacity-50"
                   >
-                    {loadingPrd ? (
+                    {loadingSpec ? (
                       <>
                         <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Menyusun Dokumen PRD...</span>
+                        <span>Menganalisis Spesifikasi Modul...</span>
                       </>
                     ) : (
                       <>
-                        <span>Lanjut ke Rencana (PRD Spec)</span>
+                        <span>Lanjut ke PRD Spec (Struktur Fitur)</span>
                         <ArrowRight className="w-4 h-4" />
                       </>
                     )}
@@ -636,73 +636,205 @@ export default function App() {
         )}
 
         {/* ======================================================== */}
-        {/* STAGE 2: RENCANA (PRD Spec & Module Flow Map)           */}
+        {/* TAHAP 2: PRD SPEC (Struktur Modul & Arsitektur Fitur)    */}
         {/* ======================================================== */}
         {step === 2 && (
-          <div className="flex flex-col space-y-5 animate-in fade-in duration-300">
+          <div className="flex flex-col space-y-6 animate-in fade-in duration-300">
             {/* Stage Toolbar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#27272a]">
               <div>
-                <span className="text-xs font-mono uppercase tracking-wider text-[#ff5c20] font-bold">Tahap 2: Rencana</span>
-                <h2 className="text-xl sm:text-2xl font-bold text-white mt-0.5">{title || 'Dokumen PRD Proyek'}</h2>
+                <span className="text-xs font-mono uppercase tracking-wider text-[#ff5c20] font-bold">Tahap 2: PRD Spec</span>
+                <h2 className="text-xl sm:text-2xl font-bold text-white mt-0.5">{title || 'Struktur Modul & Arsitektur Fitur'}</h2>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Hierarki modul sistem dan alur pemrosesan sebelum dieksekusi menjadi Dokumen PRD dan Task Kanban.
+                </p>
               </div>
 
-              {/* View Switcher & Action Buttons */}
+              {/* View Switcher & Primary Action */}
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="inline-flex p-1 bg-[#121215] border border-[#27272a] rounded-lg">
                   <button
-                    onClick={() => setPrdViewMode('prd')}
+                    onClick={() => setSpecViewMode('flow')}
                     className={`px-3 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
-                      prdViewMode === 'prd' ? 'bg-[#ff5c20] text-white' : 'text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    <FileText className="w-3.5 h-3.5 inline mr-1" /> Dokumen PRD
-                  </button>
-                  <button
-                    onClick={() => setPrdViewMode('flow')}
-                    className={`px-3 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
-                      prdViewMode === 'flow' ? 'bg-[#ff5c20] text-white' : 'text-zinc-400 hover:text-white'
+                      specViewMode === 'flow' ? 'bg-[#ff5c20] text-white' : 'text-zinc-400 hover:text-white'
                     }`}
                   >
                     <Layers className="w-3.5 h-3.5 inline mr-1" /> Flow Map
                   </button>
+                  <button
+                    onClick={() => setSpecViewMode('cards')}
+                    className={`px-3 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
+                      specViewMode === 'cards' ? 'bg-[#ff5c20] text-white' : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <GitFork className="w-3.5 h-3.5 inline mr-1" /> Daftar Modul
+                  </button>
                 </div>
 
                 <button
-                  onClick={() => setShowRevision(!showRevision)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#27272a] bg-[#121215] hover:bg-[#18181c] text-zinc-300 hover:text-white text-xs font-medium transition-colors cursor-pointer"
+                  onClick={handleGeneratePRDAndTasks}
+                  disabled={loadingFinalPipeline}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold transition-all shadow-lg shadow-[#ff5c20]/25 cursor-pointer disabled:opacity-50"
                 >
-                  <MessageSquare className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Revisi PRD</span>
-                </button>
-
-                <button
-                  onClick={copyToClipboard}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#27272a] bg-[#121215] hover:bg-[#18181c] text-zinc-300 hover:text-white text-xs font-medium transition-colors cursor-pointer"
-                >
-                  {copiedPrd ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedPrd ? 'Tersalin' : 'Salin'}</span>
-                </button>
-
-                <button
-                  onClick={handleProceedToTasks}
-                  disabled={loadingTasks}
-                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold transition-all shadow-md shadow-[#ff5c20]/20 cursor-pointer disabled:opacity-50"
-                >
-                  {loadingTasks ? (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  {loadingFinalPipeline ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Membuat Dokumen PRD &amp; Task...</span>
+                    </>
                   ) : (
                     <>
-                      <span>Lanjut ke Task (Fitur)</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
+                      <span>Generate Dokumen PRD &amp; Task</span>
+                      <ArrowRight className="w-4 h-4" />
                     </>
                   )}
                 </button>
               </div>
             </div>
 
+            {/* Spec Content: Flow Map or Modular Feature Cards */}
+            {loadingSpec ? (
+              <div className="py-24 text-center space-y-3">
+                <RefreshCw className="w-8 h-8 text-[#ff5c20] animate-spin mx-auto" />
+                <p className="text-sm font-semibold text-zinc-200">Menganalisis pohon modul fitur...</p>
+                <p className="text-xs text-zinc-500">Membangun hierarki modul inti dan relasi arsitektur sistem.</p>
+              </div>
+            ) : specViewMode === 'flow' ? (
+              <div className="rounded-xl border border-[#27272a] bg-[#121215] p-5 shadow-2xl">
+                <FlowMap 
+                  title={title} 
+                  features={features} 
+                  onContinue={handleGeneratePRDAndTasks} 
+                />
+              </div>
+            ) : (
+              /* Feature Cards Grid */
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {features.map((feat, idx) => (
+                    <div key={feat.id || idx} className="p-5 rounded-xl border border-[#27272a] bg-[#121215] space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-[#ff5c20]/20 text-[#ff5c20] text-xs font-mono font-bold">
+                            {idx + 1}
+                          </span>
+                          <h3 className="font-semibold text-sm text-zinc-100">{feat.name}</h3>
+                        </div>
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded uppercase bg-zinc-800 text-zinc-300">
+                          {feat.priority || 'high'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-400 leading-relaxed">{feat.summary}</p>
+
+                      {/* Sub features */}
+                      {feat.subFeatures && feat.subFeatures.length > 0 && (
+                        <div className="pt-3 border-t border-zinc-800/80 space-y-2">
+                          <span className="text-[10px] font-mono uppercase text-zinc-500 font-semibold tracking-wider block">
+                            Sub-Fitur Pelaksana ({feat.subFeatures.length})
+                          </span>
+                          <div className="space-y-1.5">
+                            {feat.subFeatures.map((sub, sIdx) => (
+                              <div key={sub.id || sIdx} className="flex items-start gap-2 bg-[#18181b] p-2 rounded-lg border border-zinc-800/60">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-[#ff5c20] shrink-0 mt-0.5" />
+                                <div className="text-[11px]">
+                                  <span className="font-medium text-zinc-200">{sub.name}: </span>
+                                  <span className="text-zinc-400">{sub.summary}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-4 flex justify-end">
+                  <button
+                    onClick={handleGeneratePRDAndTasks}
+                    disabled={loadingFinalPipeline}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold shadow-md shadow-[#ff5c20]/20 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    <span>Lanjut: Buat Dokumen PRD &amp; Task Pipeline</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* TAHAP 3: DOKUMEN PRD + TASK PIPELINE (Siap Eksekusi Coding Agent)  */}
+        {/* ================================================================= */}
+        {step === 3 && (
+          <div className="flex flex-col space-y-5 animate-in fade-in duration-300">
+            {/* Stage Toolbar */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#27272a]">
+              <div>
+                <span className="text-xs font-mono uppercase tracking-wider text-[#ff5c20] font-bold">Tahap 3: Dokumen PRD + Task</span>
+                <h2 className="text-xl sm:text-2xl font-bold text-white mt-0.5">{title || 'Spesifikasi & Pipeline Task'}</h2>
+              </div>
+
+              {/* Subtabs Switcher & Agent Bridge Button */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="inline-flex p-1 bg-[#121215] border border-[#27272a] rounded-lg">
+                  <button
+                    onClick={() => setStep3SubTab('prd')}
+                    className={`px-3 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
+                      step3SubTab === 'prd' ? 'bg-[#ff5c20] text-white' : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <FileText className="w-3.5 h-3.5 inline mr-1" /> Dokumen PRD
+                  </button>
+                  <button
+                    onClick={() => setStep3SubTab('tasks')}
+                    className={`px-3 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
+                      step3SubTab === 'tasks' ? 'bg-[#ff5c20] text-white' : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5 inline mr-1" /> Task Kanban ({tasks.length})
+                  </button>
+                </div>
+
+                {step3SubTab === 'prd' && (
+                  <>
+                    <button
+                      onClick={() => setShowRevision(!showRevision)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#27272a] bg-[#121215] hover:bg-[#18181c] text-zinc-300 hover:text-white text-xs font-medium transition-colors cursor-pointer"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Revisi AI</span>
+                    </button>
+
+                    <button
+                      onClick={copyToClipboard}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#27272a] bg-[#121215] hover:bg-[#18181c] text-zinc-300 hover:text-white text-xs font-medium transition-colors cursor-pointer"
+                    >
+                      {copiedPrd ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedPrd ? 'Tersalin' : 'Salin PRD'}</span>
+                    </button>
+                  </>
+                )}
+
+                <button
+                  onClick={() => {
+                    if (!isPro) {
+                      setShowPricing(true);
+                    } else {
+                      setShowAgentPrompt(true);
+                    }
+                  }}
+                  className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold transition-all shadow-md shadow-[#ff5c20]/25 cursor-pointer"
+                >
+                  <Cpu className="w-4 h-4" />
+                  <span>Hubungkan AI Agent</span>
+                  {!isPro && <span className="bg-black/25 px-1 py-0.5 rounded text-[10px]">PRO</span>}
+                </button>
+              </div>
+            </div>
+
             {/* Expandable Revision Form */}
-            {showRevision && (
+            {showRevision && step3SubTab === 'prd' && (
               <form onSubmit={handleRevisePRD} className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-3">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
@@ -716,7 +848,7 @@ export default function App() {
                   rows={2}
                   value={revisionPrompt}
                   onChange={(e) => setRevisionPrompt(e.target.value)}
-                  placeholder="Contoh: Tambahkan modul webhook Midtrans untuk verifikasi otomatis status pembayaran..."
+                  placeholder="Contoh: Tambahkan webhook Midtrans untuk verifikasi otomatis status pembayaran..."
                   className="w-full bg-[#121215] border border-[#27272a] focus:border-amber-500 rounded-lg p-2.5 text-xs text-white placeholder-zinc-600 outline-none"
                   disabled={revisingPrd}
                 />
@@ -730,13 +862,13 @@ export default function App() {
               </form>
             )}
 
-            {/* Content View: Markdown PRD or Flow Map */}
-            {prdViewMode === 'prd' ? (
+            {/* Sub-tab 1: DOKUMEN PRD */}
+            {step3SubTab === 'prd' && (
               <div className="relative rounded-xl border border-[#27272a] bg-[#121215] p-6 sm:p-8 shadow-2xl">
-                {loadingPrd ? (
+                {loadingFinalPipeline ? (
                   <div className="py-24 text-center space-y-3">
                     <RefreshCw className="w-8 h-8 text-[#ff5c20] animate-spin mx-auto" />
-                    <p className="text-sm font-semibold text-zinc-200">Sedang menyusun dokumen PRD lengkap...</p>
+                    <p className="text-sm font-semibold text-zinc-200">Menyusun dokumen PRD lengkap...</p>
                     <p className="text-xs text-zinc-500">Menganalisis DDL database, arsitektur modul, dan spesifikasi API.</p>
                   </div>
                 ) : (
@@ -774,70 +906,34 @@ export default function App() {
                   </>
                 )}
               </div>
-            ) : (
-              <div className="rounded-xl border border-[#27272a] bg-[#121215] p-5 shadow-2xl">
-                <FlowMap 
-                  title={title} 
-                  features={features} 
-                  onContinue={handleProceedToTasks} 
-                />
-              </div>
             )}
-          </div>
-        )}
 
-        {/* ======================================================== */}
-        {/* STAGE 3: FITUR (Task Breakdown & Agent Checkpoint)      */}
-        {/* ======================================================== */}
-        {step === 3 && (
-          <div className="flex flex-col space-y-5 animate-in fade-in duration-300">
-            {/* Top Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#27272a]">
-              <div>
-                <span className="text-xs font-mono uppercase tracking-wider text-[#ff5c20] font-bold">Tahap 3: Fitur</span>
-                <h2 className="text-xl sm:text-2xl font-bold text-white mt-0.5">Task Pipeline &amp; Checkpoint</h2>
-              </div>
+            {/* Sub-tab 2: TASK KANBAN PIPELINE */}
+            {step3SubTab === 'tasks' && (
+              <div className="space-y-4">
+                {/* Checkpoint Protocol STOP Alert */}
+                <div className="p-4 rounded-xl border border-[#ff5c20]/40 bg-[#ff5c20]/5 flex items-start gap-3">
+                  <Terminal className="w-5 h-5 text-[#ff5c20] shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-bold text-white">
+                      Protokol Checkpoint AI Agent (Anti-Bocor Token)
+                    </h4>
+                    <p className="text-[11px] text-zinc-300 leading-relaxed">
+                      Agent lokal Anda diwajibkan menyelesaikan antarmuka <strong>Frontend UI dengan mock data terlebih dahulu</strong>. Agent <strong>DIHARUSKAN BERHENTI</strong> dan meminta Anda menguji tampilan di browser sebelum melangkah ke skema Database dan API backend.
+                    </p>
+                  </div>
+                </div>
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    if (!isPro) {
-                      setShowPricing(true);
-                    } else {
-                      setShowAgentPrompt(true);
-                    }
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold transition-all shadow-md shadow-[#ff5c20]/25 cursor-pointer"
-                >
-                  <Cpu className="w-4 h-4" />
-                  <span>Hubungkan AI Agent</span>
-                  {!isPro && <span className="bg-black/25 px-1 py-0.5 rounded text-[10px]">PRO</span>}
-                </button>
+                {loadingFinalPipeline ? (
+                  <div className="py-24 text-center space-y-3">
+                    <RefreshCw className="w-8 h-8 text-[#ff5c20] animate-spin mx-auto" />
+                    <p className="text-sm font-semibold text-zinc-200">Menyusun task breakdown eksekusi...</p>
+                    <p className="text-xs text-zinc-500">Membagi alur ke dalam fase Frontend Mock, Backend API, dan Database.</p>
+                  </div>
+                ) : (
+                  <TaskKanban tasks={tasks} onStatusChange={handleStatusChange} />
+                )}
               </div>
-            </div>
-
-            {/* Checkpoint Protocol STOP Alert */}
-            <div className="p-4 rounded-xl border border-[#ff5c20]/40 bg-[#ff5c20]/5 flex items-start gap-3">
-              <Terminal className="w-5 h-5 text-[#ff5c20] shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <h4 className="text-xs font-bold text-white">
-                  Protokol Checkpoint AI Agent (Anti-Bocor Token)
-                </h4>
-                <p className="text-[11px] text-zinc-300 leading-relaxed">
-                  Agent lokal Anda diwajibkan menyelesaikan antarmuka <strong>Frontend UI dengan mock data terlebih dahulu</strong>. Agent <strong>DIHARUSKAN BERHENTI</strong> dan meminta Anda menguji tampilan di browser sebelum melangkah ke skema Database dan API backend.
-                </p>
-              </div>
-            </div>
-
-            {/* Kanban Board Container */}
-            {loadingTasks ? (
-              <div className="py-24 text-center space-y-3">
-                <RefreshCw className="w-8 h-8 text-[#ff5c20] animate-spin mx-auto" />
-                <p className="text-sm font-semibold text-zinc-200">Menyusun task breakdown eksekusi...</p>
-                <p className="text-xs text-zinc-500">Membagi alur ke dalam fase Frontend Mock, Backend API, dan Database.</p>
-              </div>
-            ) : (
-              <TaskKanban tasks={tasks} onStatusChange={handleStatusChange} />
             )}
           </div>
         )}

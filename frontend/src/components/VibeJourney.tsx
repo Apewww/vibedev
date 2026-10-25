@@ -15,9 +15,9 @@ export const VibeJourney: React.FC<VibeJourneyProps> = ({
   className = '' 
 }) => {
   const steps = [
-    { key: 'struktur', num: 1, label: 'Ide & Kuesioner', shortLabel: 'Ide' },
-    { key: 'rencana', num: 2, label: 'PRD Spec', shortLabel: 'PRD' },
-    { key: 'fitur', num: 3, label: 'Task Pipeline', shortLabel: 'Task' }
+    { key: 'ide_kuis', num: 1, label: 'Ide & Kuis', shortLabel: 'Ide' },
+    { key: 'prd_spec', num: 2, label: 'PRD Spec', shortLabel: 'Spec' },
+    { key: 'prd_task', num: 3, label: 'Dokumen PRD + Task', shortLabel: 'PRD + Task' }
   ];
 
   return (
