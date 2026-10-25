@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   ArrowRight, Copy, Check, ArrowLeft, RefreshCw, 
   Menu, Sparkles, Terminal, FileText, Cpu, 
-  MessageSquare, Layers, 
+  MessageSquare, Layers, Box,
   User as UserIcon, X, ShieldAlert
 } from 'lucide-react';
 import { marked } from 'marked';
@@ -64,6 +64,7 @@ export default function App() {
   const [showRevision, setShowRevision] = useState<boolean>(false);
   const [revisionPrompt, setRevisionPrompt] = useState<string>('');
   const [revisingPrd, setRevisingPrd] = useState<boolean>(false);
+  const [specViewMode, setSpecViewMode] = useState<'canvas' | 'grid'>('canvas');
 
   // Modals state
   const [showAgentPrompt, setShowAgentPrompt] = useState<boolean>(false);
@@ -761,8 +762,8 @@ export default function App() {
         {/* ======================================================== */}
         {step === 2 && (
           <div className="flex flex-col space-y-4 animate-in fade-in duration-300">
-            {/* Stage Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#27272a]">
+            {/* Stage Header matching ngodingpakeai layout */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3.5 border-b border-[#27272a]">
               <div>
                 <span className="text-xs font-mono uppercase tracking-wider text-[#ff5c20] font-bold">Tahap 2: PRD Spec</span>
                 <h2 className="text-xl sm:text-2xl font-bold text-white mt-0.5">{title || 'Struktur Modul & Arsitektur Fitur'}</h2>
@@ -771,12 +772,37 @@ export default function App() {
                 </p>
               </div>
 
-              {/* Primary Action Button */}
-              <div className="flex items-center gap-2">
+              {/* Header Right: Flow Map / Daftar Modul toggle + Generate Button */}
+              <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+                <div className="inline-flex p-1 bg-[#121215] border border-[#27272a] rounded-xl shadow-inner">
+                  <button
+                    onClick={() => setSpecViewMode('canvas')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      specViewMode === 'canvas'
+                        ? 'bg-[#ff5c20] text-white shadow-sm'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    <span>Flow Map</span>
+                  </button>
+                  <button
+                    onClick={() => setSpecViewMode('grid')}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                      specViewMode === 'grid'
+                        ? 'bg-[#ff5c20] text-white shadow-sm'
+                        : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    <Box className="w-3.5 h-3.5" />
+                    <span>Daftar Modul</span>
+                  </button>
+                </div>
+
                 <button
                   onClick={handleGeneratePRDAndTasks}
                   disabled={loadingFinalPipeline}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold transition-all shadow-lg shadow-[#ff5c20]/25 cursor-pointer disabled:opacity-50"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-[#ff5c20] to-[#e04f18] hover:opacity-95 text-white text-xs font-bold transition-all shadow-lg shadow-[#ff5c20]/25 cursor-pointer disabled:opacity-50"
                 >
                   {loadingFinalPipeline ? (
                     <>
@@ -805,6 +831,8 @@ export default function App() {
                 title={title} 
                 features={features} 
                 idea={idea}
+                viewMode={specViewMode}
+                onViewModeChange={setSpecViewMode}
                 onContinue={handleGeneratePRDAndTasks} 
               />
             )}

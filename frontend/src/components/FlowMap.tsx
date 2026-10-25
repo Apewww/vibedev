@@ -2,8 +2,9 @@ import React, { useState, useRef, useCallback } from 'react';
 import { 
   Box, CheckCircle2, ArrowRight,
   Cpu, Plus, Minus, Maximize2,
-  X, ChevronRight, ChevronLeft, Sparkles, Layers,
-  FileText, Info, GitFork
+  X, ChevronRight, ChevronLeft, Sparkles,
+  FileText, Info, Shield, Database, Layout,
+  Bell, CreditCard, Search, Settings, Download
 } from 'lucide-react';
 
 export interface SubFeature {
@@ -30,17 +31,32 @@ interface FlowMapProps {
   features: FeatureNode[];
   onContinue: () => void;
   idea?: string;
+  viewMode?: 'canvas' | 'grid';
+  onViewModeChange?: (mode: 'canvas' | 'grid') => void;
 }
+
+// Smart contextual icon resolver based on module name & summary
+const getModuleIcon = (name: string, summary: string) => {
+  const text = `${name} ${summary}`.toLowerCase();
+  if (/auth|login|masuk|daftar|akun|keamanan|role|user|pengguna|profil/.test(text)) return Shield;
+  if (/database|data|simpan|storage|relasi|tabel|crud|koleksi/.test(text)) return Database;
+  if (/bayar|transaksi|checkout|duit|saldo|payment|stripe|midtrans|langganan/.test(text)) return CreditCard;
+  if (/katalog|produk|proyek|tampilan|ui|beranda|karya|portfolio|showcase|list/.test(text)) return Layout;
+  if (/pesan|chat|diskusi|komentar|forum|notif|pemberitahuan|email/.test(text)) return Bell;
+  if (/laporan|ekspor|unduh|pdf|excel|export|dokumen|download/.test(text)) return Download;
+  if (/cari|search|filter|sorting|kategori/.test(text)) return Search;
+  if (/pengaturan|setting|konfigurasi|admin|kelola|manajemen/.test(text)) return Settings;
+  if (/analitik|dashboard|grafik|statistik|performa|ai|engine|otomasi/.test(text)) return Cpu;
+  return Box;
+};
 
 export const FlowMap: React.FC<FlowMapProps> = ({ 
   title, 
   features, 
   onContinue,
-  idea
+  idea,
+  viewMode = 'canvas'
 }) => {
-  // View mode: interactive canvas or list grid
-  const [viewMode, setViewMode] = useState<'canvas' | 'grid'>('canvas');
-  
   // Selected node for detail drawer
   const [selectedNode, setSelectedNode] = useState<{
     type: 'root' | 'feature' | 'subgroup';
@@ -52,25 +68,23 @@ export const FlowMap: React.FC<FlowMapProps> = ({
   const [showHint, setShowHint] = useState<boolean>(true);
 
   // Canvas pan and zoom state
-  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 80, y: 40 });
+  const [pan, setPan] = useState<{ x: number; y: number }>({ x: 60, y: 30 });
   const [zoom, setZoom] = useState<number>(0.95);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const dragStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const canvasRef = useRef<HTMLDivElement>(null);
 
-  // Center nodes initially or on reset
+  // Center nodes on reset
   const handleFitView = useCallback(() => {
-    setPan({ x: 60, y: 40 });
+    setPan({ x: 60, y: 30 });
     setZoom(0.95);
   }, []);
 
-  const handleZoomIn = () => setZoom(prev => Math.min(1.6, prev + 0.15));
-  const handleZoomOut = () => setZoom(prev => Math.max(0.45, prev - 0.15));
-  const handleResetZoom = () => setZoom(1.0);
+  const handleZoomIn = () => setZoom(prev => Math.min(1.6, Number((prev + 0.1).toFixed(2))));
+  const handleZoomOut = () => setZoom(prev => Math.max(0.45, Number((prev - 0.1).toFixed(2))));
 
   // Mouse drag handlers for canvas panning
   const handleMouseDown = (e: React.MouseEvent) => {
-    // Only pan if clicking canvas background (not on buttons or cards)
     if ((e.target as HTMLElement).closest('.interactive-node') || 
         (e.target as HTMLElement).closest('.canvas-control')) {
       return;
@@ -89,14 +103,13 @@ export const FlowMap: React.FC<FlowMapProps> = ({
 
   const handleMouseUp = () => setIsDragging(false);
 
-  // Wheel zoom handler
+  // Wheel zoom and pan handler
   const handleWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
       const delta = e.deltaY > 0 ? -0.05 : 0.05;
-      setZoom(prev => Math.min(1.6, Math.max(0.45, prev + delta)));
+      setZoom(prev => Math.min(1.6, Math.max(0.45, Number((prev + delta).toFixed(2)))));
     } else {
-      // Normal wheel pans vertically
       setPan(prev => ({
         x: prev.x - e.deltaX * 0.5,
         y: prev.y - e.deltaY * 0.5
@@ -107,63 +120,18 @@ export const FlowMap: React.FC<FlowMapProps> = ({
   // Node Layout Dimensions
   const ROOT_X = 40;
   const FEAT_X = 380;
-  const SUB_X = 720;
+  const SUB_X = 730;
   const NODE_W = 260;
-  const ROW_GAP = 130;
+  const ROW_GAP = 135;
 
-  // Total canvas height based on features
   const totalRows = Math.max(features.length, 3);
-  const rootCenterY = Math.max(120, (totalRows * ROW_GAP) / 2 - 20);
+  const rootCenterY = Math.max(120, (totalRows * ROW_GAP) / 2 - 25);
 
   return (
-    <div className="w-full space-y-4 animate-in fade-in duration-300">
-      {/* Top Banner Toolbar & View Toggle */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#121215] border border-[#27272a] p-3 sm:px-4 sm:py-2.5 rounded-xl">
-        <div className="flex items-center gap-2">
-          <span className="flex size-6 items-center justify-center rounded-lg bg-[#ff5c20]/15 text-[#ff5c20]">
-            <GitFork className="w-3.5 h-3.5" />
-          </span>
-          <span className="text-xs font-semibold text-zinc-200">
-            Arsitektur &amp; Flow Canvas
-          </span>
-          <span className="text-zinc-600 hidden sm:inline">|</span>
-          <span className="text-xs text-zinc-400 hidden sm:inline">
-            {features.length} Modul Terpetakan
-          </span>
-        </div>
-
-        {/* View Toggle Buttons */}
-        <div className="flex items-center gap-2 self-end sm:self-auto">
-          <div className="inline-flex p-1 bg-[#18181b] border border-[#27272a] rounded-lg">
-            <button
-              onClick={() => setViewMode('canvas')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
-                viewMode === 'canvas' 
-                  ? 'bg-[#ff5c20] text-white shadow-sm' 
-                  : 'text-zinc-400 hover:text-white'
-              }`}
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span>Canvas Flow</span>
-            </button>
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-md text-xs font-medium transition-all cursor-pointer ${
-                viewMode === 'grid' 
-                  ? 'bg-[#ff5c20] text-white shadow-sm' 
-                  : 'text-zinc-400 hover:text-white'
-              }`}
-            >
-              <Box className="w-3.5 h-3.5" />
-              <span>Daftar Modul</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
+    <div className="w-full space-y-3 animate-in fade-in duration-300">
       {/* Dismissible Hint Banner matching ngodingpakeai */}
       {showHint && (
-        <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-zinc-800/80 bg-[#141418] text-xs text-zinc-400">
+        <div className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-zinc-800/80 bg-[#121215] text-xs text-zinc-400">
           <div className="flex items-center gap-2 min-w-0">
             <Info className="w-4 h-4 text-[#ff5c20] shrink-0" />
             <p className="truncate">
@@ -184,8 +152,8 @@ export const FlowMap: React.FC<FlowMapProps> = ({
       {/* VIEW 1: INTERACTIVE CANVAS FLOW MAP (ReactFlow style)    */}
       {/* ======================================================== */}
       {viewMode === 'canvas' ? (
-        <div className="relative w-full h-[620px] rounded-2xl border border-[#27272a] bg-[#09090b] overflow-hidden select-none shadow-2xl">
-          {/* Subtle Grid Dot Pattern Background that moves with pan */}
+        <div className="relative w-full h-[640px] xl:h-[700px] rounded-2xl border border-[#27272a] bg-[#09090b] overflow-hidden select-none shadow-2xl">
+          {/* Subtle Grid Dot Pattern Background */}
           <div 
             className="absolute inset-0 pointer-events-none"
             style={{
@@ -348,7 +316,7 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                 </div>
 
                 {/* Connection Output Handle Dot */}
-                <div className="absolute -right-1.5 top-1/2 -translate-y-1/2 size-3 rounded-full bg-[#ff5c20] border-2 border-[#121215]" />
+                <div className="absolute -right-1.5 top-1/2 -translate-y-1/2 size-3 rounded-full bg-[#ff5c20] border-2 border-[#121215] shadow-sm shadow-[#ff5c20]/50" />
               </div>
 
               {/* ---------------------------------------------------- */}
@@ -358,6 +326,7 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                 const isSelected = selectedNode?.type === 'feature' && selectedNode?.featureIndex === idx;
                 const topPos = 40 + idx * ROW_GAP;
                 const subCount = feat.subFeatures?.length || 0;
+                const IconComponent = getModuleIcon(feat.name, feat.summary);
 
                 return (
                   <div
@@ -390,8 +359,8 @@ export const FlowMap: React.FC<FlowMapProps> = ({
 
                     {/* Module Title */}
                     <div className="flex items-center gap-2">
-                      <div className="size-6 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-300 shrink-0">
-                        <Box className="w-3.5 h-3.5 text-[#ff5c20]" />
+                      <div className="size-6 rounded-lg bg-zinc-800/80 flex items-center justify-center text-zinc-300 shrink-0">
+                        <IconComponent className="w-3.5 h-3.5 text-[#ff5c20]" />
                       </div>
                       <h4 className="text-xs sm:text-sm font-bold text-white truncate flex-1" title={feat.name}>
                         {feat.name}
@@ -410,12 +379,12 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                         <CheckCircle2 className="w-3 h-3 text-[#ff5c20]" />
                         <span>{subCount} sub-fitur</span>
                       </span>
-                      <span className="text-zinc-500">Klik detail &rarr;</span>
+                      <span className="text-zinc-500">Detail &rarr;</span>
                     </div>
 
                     {/* Output Connection Handle Dot */}
                     {subCount > 0 && (
-                      <div className="absolute -right-1.5 top-1/2 -translate-y-1/2 size-3 rounded-full bg-[#ff5c20] border-2 border-[#121215]" />
+                      <div className="absolute -right-1.5 top-1/2 -translate-y-1/2 size-3 rounded-full bg-[#ff5c20] border-2 border-[#121215] shadow-sm shadow-[#ff5c20]/50" />
                     )}
                   </div>
                 );
@@ -459,7 +428,7 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                       </span>
                     </div>
 
-                    {/* Sub-features list pill */}
+                    {/* Sub-features list */}
                     <div className="space-y-1.5">
                       {feat.subFeatures.slice(0, 3).map((sub, sIdx) => (
                         <div 
@@ -491,13 +460,9 @@ export const FlowMap: React.FC<FlowMapProps> = ({
             >
               <Minus className="w-3.5 h-3.5" />
             </button>
-            <button
-              onClick={handleResetZoom}
-              className="px-2 py-1 rounded-md text-[11px] font-mono font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-              title="Reset Zoom 100%"
-            >
+            <span className="text-[11px] font-mono font-semibold text-zinc-300 px-2 min-w-[42px] text-center">
               {Math.round(zoom * 100)}%
-            </button>
+            </span>
             <button
               onClick={handleZoomIn}
               className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
@@ -671,49 +636,55 @@ export const FlowMap: React.FC<FlowMapProps> = ({
         /* ======================================================== */
         <div className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {features.map((feat, idx) => (
-              <div 
-                key={feat.id || idx} 
-                className="p-5 rounded-2xl border border-[#27272a] bg-[#121215] space-y-3.5 hover:border-zinc-700 transition-all shadow-md"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <span className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-[#ff5c20]/15 text-[#ff5c20] text-xs font-mono font-bold">
-                      {idx + 1}
-                    </span>
-                    <div>
-                      <span className="text-[10px] font-mono text-[#ff5c20] uppercase font-semibold">MODUL {idx + 1}</span>
-                      <h3 className="font-bold text-sm text-zinc-100">{feat.name}</h3>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-md uppercase bg-zinc-800 text-zinc-300 border border-zinc-700/60 font-semibold">
-                    {feat.priority || 'HIGH'}
-                  </span>
-                </div>
-
-                <p className="text-xs text-zinc-400 leading-relaxed">{feat.summary}</p>
-
-                {/* Sub features */}
-                {feat.subFeatures && feat.subFeatures.length > 0 && (
-                  <div className="pt-3 border-t border-zinc-800/80 space-y-2">
-                    <span className="text-[10px] font-mono uppercase text-zinc-500 font-semibold tracking-wider block">
-                      Sub-Fitur &amp; Rincian ({feat.subFeatures.length})
-                    </span>
-                    <div className="space-y-1.5">
-                      {feat.subFeatures.map((sub, sIdx) => (
-                        <div key={sub.id || sIdx} className="flex items-start gap-2 bg-[#18181b] p-2.5 rounded-lg border border-zinc-800/60">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-[#ff5c20] shrink-0 mt-0.5" />
-                          <div className="text-[11px]">
-                            <span className="font-semibold text-zinc-200">{sub.name}: </span>
-                            <span className="text-zinc-400">{sub.summary}</span>
-                          </div>
+            {features.map((feat, idx) => {
+              const IconComponent = getModuleIcon(feat.name, feat.summary);
+              return (
+                <div 
+                  key={feat.id || idx} 
+                  className="p-5 rounded-2xl border border-[#27272a] bg-[#121215] space-y-3.5 hover:border-zinc-700 transition-all shadow-md"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <span className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-[#ff5c20]/15 text-[#ff5c20] text-xs font-mono font-bold">
+                        {idx + 1}
+                      </span>
+                      <div>
+                        <span className="text-[10px] font-mono text-[#ff5c20] uppercase font-semibold">MODUL {idx + 1}</span>
+                        <div className="flex items-center gap-1.5">
+                          <IconComponent className="w-3.5 h-3.5 text-[#ff5c20]" />
+                          <h3 className="font-bold text-sm text-zinc-100">{feat.name}</h3>
                         </div>
-                      ))}
+                      </div>
                     </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-md uppercase bg-zinc-800 text-zinc-300 border border-zinc-700/60 font-semibold">
+                      {feat.priority || 'HIGH'}
+                    </span>
                   </div>
-                )}
-              </div>
-            ))}
+
+                  <p className="text-xs text-zinc-400 leading-relaxed">{feat.summary}</p>
+
+                  {/* Sub features */}
+                  {feat.subFeatures && feat.subFeatures.length > 0 && (
+                    <div className="pt-3 border-t border-zinc-800/80 space-y-2">
+                      <span className="text-[10px] font-mono uppercase text-zinc-500 font-semibold tracking-wider block">
+                        Sub-Fitur &amp; Rincian ({feat.subFeatures.length})
+                      </span>
+                      <div className="space-y-1.5">
+                        {feat.subFeatures.map((sub, sIdx) => (
+                          <div key={sub.id || sIdx} className="flex items-start gap-2 bg-[#18181b] p-2.5 rounded-lg border border-zinc-800/60">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-[#ff5c20] shrink-0 mt-0.5" />
+                            <div className="text-[11px]">
+                              <span className="font-semibold text-zinc-200">{sub.name}: </span>
+                              <span className="text-zinc-400">{sub.summary}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
