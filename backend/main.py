@@ -8,13 +8,24 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from dotenv import load_dotenv
+def load_env_file(filepath: str):
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip("'\"")
+                        if k and k not in os.environ:
+                            os.environ[k] = v
+        except Exception:
+            pass
 
-env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-if os.path.exists(env_file):
-    load_dotenv(env_file)
-else:
-    load_dotenv()
+load_env_file(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
+load_env_file("/var/www/.env")
+load_env_file("/var/www/vibedev.env")
 
 app = FastAPI(title="VibeDev Backend", description="PRD Generator API Engine")
 
@@ -513,6 +524,7 @@ Revisi dan perbarui PRD di atas sesuai instruksi secara presisi. Kembalikan HANY
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 REDIRECT_URI = os.getenv("REDIRECT_URI", "https://vibedev.raflylabs.com/api/auth/callback/google")
+
 
 from fastapi.responses import RedirectResponse
 

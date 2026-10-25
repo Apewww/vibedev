@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   ArrowRight, Copy, Check, ArrowLeft, RefreshCw, 
   Menu, Sparkles, Terminal, FileText, Cpu, 
-  MessageSquare, Layers, GitFork, CheckCircle2, 
+  MessageSquare, Layers, 
   User as UserIcon, X, ShieldAlert
 } from 'lucide-react';
 import { marked } from 'marked';
@@ -54,7 +54,6 @@ export default function App() {
   // Step 2: PRD Spec (Roadmap & Feature Tree) state
   const [features, setFeatures] = useState<FeatureNode[]>([]);
   const [loadingSpec, setLoadingSpec] = useState<boolean>(false);
-  const [specViewMode, setSpecViewMode] = useState<'flow' | 'cards'>('flow');
 
   // Step 3: Dokumen PRD + Task state
   const [step3SubTab, setStep3SubTab] = useState<'prd' | 'tasks'>('prd');
@@ -498,7 +497,7 @@ export default function App() {
       {/* Top Navbar */}
       <header className="sticky top-0 z-30 border-b border-[#27272a] bg-[#09090b]/85 backdrop-blur-md px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4">
         {/* Left: Sidebar Toggle & Brand / Project Title */}
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
           <button
             onClick={() => setSidebarOpen(true)}
             className="p-1.5 rounded-lg hover:bg-zinc-800/60 text-zinc-400 hover:text-white transition-colors cursor-pointer shrink-0"
@@ -509,34 +508,34 @@ export default function App() {
 
           <div 
             onClick={handleNewProject}
-            className="flex items-center gap-2.5 cursor-pointer shrink-0"
+            className="flex items-center gap-2 cursor-pointer shrink-0"
             title="Kembali ke Dashboard Utama"
           >
             <img 
               src="/logo.png" 
               alt="VibeDev AI Logo" 
-              className="w-8 h-8 rounded-lg object-contain" 
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg object-contain" 
             />
-            <span className="font-bold tracking-tight text-base text-white font-mono hidden md:inline">
+            <span className="font-bold tracking-tight text-sm sm:text-base text-white font-mono hidden sm:inline">
               VibeDev <span className="text-[#ff5c20]">AI</span>
             </span>
           </div>
 
           {/* Active Project Title Pill */}
           {title && (
-            <div className="hidden sm:flex items-center gap-2 pl-3 border-l border-zinc-800 min-w-0">
-              <span className="text-xs text-zinc-300 font-medium truncate max-w-[200px] lg:max-w-[320px]">
+            <div className="hidden lg:flex items-center gap-2 pl-2.5 border-l border-zinc-800/80 min-w-0">
+              <span className="text-xs text-zinc-300 font-medium truncate max-w-[160px] xl:max-w-[240px]">
                 {title}
               </span>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 shrink-0">
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800/80 text-zinc-400 border border-zinc-700/50 shrink-0">
                 {step === 1 ? '1. Ide & Kuis' : step === 2 ? '2. PRD Spec' : '3. Dokumen PRD + Task'}
               </span>
             </div>
           )}
         </div>
 
-        {/* Center: 3-Step Journey Stepper (Ide & Kuis -> PRD Spec -> Dokumen PRD + Task) */}
-        <div className="flex-1 max-w-lg mx-auto hidden sm:block">
+        {/* Center: 3-Step Journey Stepper (Strictly Centered horizontally) */}
+        <div className="absolute left-1/2 -translate-x-1/2 hidden md:block pointer-events-auto">
           <VibeJourney
             currentStep={step}
             maxStepReached={maxStepReached}
@@ -545,7 +544,7 @@ export default function App() {
         </div>
 
         {/* Right: Actions, Quota Counter & Profile */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-auto">
           {/* Agent Checkpoint Bridge Button (Active on Step 3) */}
           {step === 3 && (
             <button
@@ -561,7 +560,7 @@ export default function App() {
 
           {/* Free Quota Badge */}
           {user && (
-            <div className="hidden md:flex items-center gap-1.5 bg-[#121215] border border-[#27272a] px-2.5 py-1 rounded-full text-xs text-zinc-300">
+            <div className="hidden sm:flex items-center gap-1.5 bg-[#121215] border border-[#27272a] px-2.5 py-1 rounded-full text-xs text-zinc-300">
               <Sparkles className="w-3.5 h-3.5 text-[#ff5c20]" />
               {credits.isAdmin ? (
                 <span className="font-mono text-zinc-200 font-bold">Admin Unlimited</span>
@@ -761,9 +760,9 @@ export default function App() {
         {/* TAHAP 2: PRD SPEC (Struktur Modul & Arsitektur Fitur)    */}
         {/* ======================================================== */}
         {step === 2 && (
-          <div className="flex flex-col space-y-6 animate-in fade-in duration-300">
-            {/* Stage Toolbar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#27272a]">
+          <div className="flex flex-col space-y-4 animate-in fade-in duration-300">
+            {/* Stage Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[#27272a]">
               <div>
                 <span className="text-xs font-mono uppercase tracking-wider text-[#ff5c20] font-bold">Tahap 2: PRD Spec</span>
                 <h2 className="text-xl sm:text-2xl font-bold text-white mt-0.5">{title || 'Struktur Modul & Arsitektur Fitur'}</h2>
@@ -772,31 +771,12 @@ export default function App() {
                 </p>
               </div>
 
-              {/* View Switcher & Primary Action */}
-              <div className="flex items-center gap-2 flex-wrap">
-                <div className="inline-flex p-1 bg-[#121215] border border-[#27272a] rounded-lg">
-                  <button
-                    onClick={() => setSpecViewMode('flow')}
-                    className={`px-3 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
-                      specViewMode === 'flow' ? 'bg-[#ff5c20] text-white' : 'text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    <Layers className="w-3.5 h-3.5 inline mr-1" /> Flow Map
-                  </button>
-                  <button
-                    onClick={() => setSpecViewMode('cards')}
-                    className={`px-3 py-1 rounded text-xs font-medium transition-all cursor-pointer ${
-                      specViewMode === 'cards' ? 'bg-[#ff5c20] text-white' : 'text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    <GitFork className="w-3.5 h-3.5 inline mr-1" /> Daftar Modul
-                  </button>
-                </div>
-
+              {/* Primary Action Button */}
+              <div className="flex items-center gap-2">
                 <button
                   onClick={handleGeneratePRDAndTasks}
                   disabled={loadingFinalPipeline}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold transition-all shadow-lg shadow-[#ff5c20]/25 cursor-pointer disabled:opacity-50"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold transition-all shadow-lg shadow-[#ff5c20]/25 cursor-pointer disabled:opacity-50"
                 >
                   {loadingFinalPipeline ? (
                     <>
@@ -813,77 +793,24 @@ export default function App() {
               </div>
             </div>
 
-            {/* Spec Content: Flow Map or Modular Feature Cards */}
+            {/* Spec Content: Interactive FlowMap Canvas */}
             {loadingSpec ? (
               <div className="py-24 text-center space-y-3">
                 <RefreshCw className="w-8 h-8 text-[#ff5c20] animate-spin mx-auto" />
                 <p className="text-sm font-semibold text-zinc-200">Menganalisis pohon modul fitur...</p>
                 <p className="text-xs text-zinc-500">Membangun hierarki modul inti dan relasi arsitektur sistem.</p>
               </div>
-            ) : specViewMode === 'flow' ? (
-              <div className="rounded-xl border border-[#27272a] bg-[#121215] p-5 shadow-2xl">
-                <FlowMap 
-                  title={title} 
-                  features={features} 
-                  onContinue={handleGeneratePRDAndTasks} 
-                />
-              </div>
             ) : (
-              /* Feature Cards Grid */
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {features.map((feat, idx) => (
-                    <div key={feat.id || idx} className="p-5 rounded-xl border border-[#27272a] bg-[#121215] space-y-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="flex size-6 shrink-0 items-center justify-center rounded-lg bg-[#ff5c20]/20 text-[#ff5c20] text-xs font-mono font-bold">
-                            {idx + 1}
-                          </span>
-                          <h3 className="font-semibold text-sm text-zinc-100">{feat.name}</h3>
-                        </div>
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded uppercase bg-zinc-800 text-zinc-300">
-                          {feat.priority || 'high'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-zinc-400 leading-relaxed">{feat.summary}</p>
-
-                      {/* Sub features */}
-                      {feat.subFeatures && feat.subFeatures.length > 0 && (
-                        <div className="pt-3 border-t border-zinc-800/80 space-y-2">
-                          <span className="text-[10px] font-mono uppercase text-zinc-500 font-semibold tracking-wider block">
-                            Sub-Fitur Pelaksana ({feat.subFeatures.length})
-                          </span>
-                          <div className="space-y-1.5">
-                            {feat.subFeatures.map((sub, sIdx) => (
-                              <div key={sub.id || sIdx} className="flex items-start gap-2 bg-[#18181b] p-2 rounded-lg border border-zinc-800/60">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-[#ff5c20] shrink-0 mt-0.5" />
-                                <div className="text-[11px]">
-                                  <span className="font-medium text-zinc-200">{sub.name}: </span>
-                                  <span className="text-zinc-400">{sub.summary}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="pt-4 flex justify-end">
-                  <button
-                    onClick={handleGeneratePRDAndTasks}
-                    disabled={loadingFinalPipeline}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold shadow-md shadow-[#ff5c20]/20 transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    <span>Lanjut: Buat Dokumen PRD &amp; Task Pipeline</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
+              <FlowMap 
+                title={title} 
+                features={features} 
+                idea={idea}
+                onContinue={handleGeneratePRDAndTasks} 
+              />
             )}
           </div>
         )}
+
 
         {/* ================================================================= */}
         {/* TAHAP 3: DOKUMEN PRD + TASK PIPELINE (Siap Eksekusi Coding Agent)  */}
