@@ -1,0 +1,27 @@
+{
+  "name": "vibedev",
+  "version": "1.0.0",
+  "description": "VibeDev AI Coding Agent Runner & Realtime Telemetry CLI",
+  "main": "cli.js",
+  "bin": {
+    "vibedev": "./cli.js",
+    "vibedev-agent": "./cli.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Apewww/vibedev.git"
+  },
+  "keywords": [
+    "vibedev",
+    "ai",
+    "coding-agent",
+    "telemetry",
+    "prd",
+    "tasks"
+  ],
+  "author": "VibeDev",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

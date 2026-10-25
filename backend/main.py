@@ -3,7 +3,8 @@ import json
 import uuid
 import time
 import requests
-from typing import Optional, List, Dict, Any
+import asyncio
+from typing import Optional, List, Dict, Any, Set
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -870,6 +871,66 @@ Status HANYA salah satu dari: "todo", "in_progress", "done". Buat 1 atau 2 task 
         save_db(db)
         return {"tasks": fallback_tasks}
 
+# Realtime Plan Subscribers (plan_id -> set of asyncio.Queue)
+plan_subscribers: Dict[str, Set[asyncio.Queue]] = {}
+
+def notify_plan_subscribers(plan_id: str, data: dict):
+    if plan_id in plan_subscribers:
+        for q in list(plan_subscribers[plan_id]):
+            try:
+                q.put_nowait(data)
+            except Exception:
+                pass
+
+@app.get("/api/plan/{plan_id}/tasks")
+async def get_plan_tasks(plan_id: str):
+    db = load_db()
+    plan = db["plans"].get(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    return {"tasks": plan.get("tasks", [])}
+
+@app.post("/api/plan/{plan_id}/tasks/{task_id}/start")
+async def start_task_endpoint(plan_id: str, task_id: str):
+    db = load_db()
+    plan = db["plans"].get(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    tasks = plan.get("tasks", [])
+    found = False
+    for t in tasks:
+        if t["id"] == task_id:
+            t["status"] = "in_progress"
+            found = True
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail="Task not found")
+    plan["tasks"] = tasks
+    save_db(db)
+    notify_plan_subscribers(plan_id, {"type": "tasks_updated", "tasks": tasks, "action": "start", "taskId": task_id})
+    return {"success": True, "tasks": tasks}
+
+@app.post("/api/plan/{plan_id}/tasks/{task_id}/complete")
+@app.post("/api/plan/{plan_id}/tasks/{task_id}/done")
+async def complete_task_endpoint(plan_id: str, task_id: str):
+    db = load_db()
+    plan = db["plans"].get(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan not found")
+    tasks = plan.get("tasks", [])
+    found = False
+    for t in tasks:
+        if t["id"] == task_id:
+            t["status"] = "done"
+            found = True
+            break
+    if not found:
+        raise HTTPException(status_code=404, detail="Task not found")
+    plan["tasks"] = tasks
+    save_db(db)
+    notify_plan_subscribers(plan_id, {"type": "tasks_updated", "tasks": tasks, "action": "complete", "taskId": task_id})
+    return {"success": True, "tasks": tasks}
+
 @app.patch("/api/plan/{plan_id}/tasks/{task_id}")
 async def update_task_status(plan_id: str, task_id: str, request: Request):
     body = await request.json()
@@ -886,7 +947,40 @@ async def update_task_status(plan_id: str, task_id: str, request: Request):
             break
     plan["tasks"] = tasks
     save_db(db)
+    notify_plan_subscribers(plan_id, {"type": "tasks_updated", "tasks": tasks, "action": "patch", "taskId": task_id})
     return {"success": True, "tasks": tasks}
+
+@app.get("/api/plan/{plan_id}/events")
+async def plan_events(plan_id: str):
+    q = asyncio.Queue()
+    if plan_id not in plan_subscribers:
+        plan_subscribers[plan_id] = set()
+    plan_subscribers[plan_id].add(q)
+
+    async def event_generator():
+        try:
+            yield f"data: {json.dumps({'type': 'connected', 'planId': plan_id})}\n\n"
+            while True:
+                try:
+                    data = await asyncio.wait_for(q.get(), timeout=20.0)
+                    yield f"data: {json.dumps(data)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": heartbeat\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            if plan_id in plan_subscribers:
+                plan_subscribers[plan_id].discard(q)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 @app.get("/api/pricing/plans")
 async def get_pricing_plans():
@@ -1001,6 +1095,7 @@ Mulai eksekusi dari Task 1 sekarang!
         "prompt": prompt
     }
 
+@app.get("/api/plan/{plan_id}/tasks/next")
 @app.get("/api/plan/{plan_id}/task/next")
 async def get_next_task(plan_id: str):
     db = load_db()

@@ -142,6 +142,49 @@ export default function App() {
     }
   };
 
+  // Realtime Telemetry Hook: Live sync task changes via SSE & polling when viewing Step 3
+  useEffect(() => {
+    if (step !== 3 || !planId) return;
+
+    let eventSource: EventSource | null = null;
+    let isCancelled = false;
+
+    // 1. Instant Push via Server-Sent Events (SSE)
+    try {
+      eventSource = new EventSource(`/api/plan/${planId}/events`);
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && data.type === 'tasks_updated' && Array.isArray(data.tasks)) {
+            setTasks(data.tasks);
+          }
+        } catch (e) {}
+      };
+    } catch (e) {
+      console.warn('SSE connection failed, falling back to polling:', e);
+    }
+
+    // 2. High-reliability polling (every 2.5s) to guarantee zero desync
+    const pollInterval = setInterval(async () => {
+      if (isCancelled) return;
+      try {
+        const res = await fetch(`/api/plan/${planId}/tasks`);
+        if (res.ok) {
+          const d = await res.json();
+          if (d && Array.isArray(d.tasks)) {
+            setTasks(d.tasks);
+          }
+        }
+      } catch (err) {}
+    }, 2500);
+
+    return () => {
+      isCancelled = true;
+      if (eventSource) eventSource.close();
+      clearInterval(pollInterval);
+    };
+  }, [step, planId]);
+
   const handleGoogleLogin = async () => {
     try {
       const callbackURL = window.location.origin + window.location.pathname;
