@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Sparkles, ArrowRight, Copy, Check, 
+  ArrowRight, Copy, Check, 
   ArrowLeft, RefreshCw, LogOut, 
-  HelpCircle, GitFork, Kanban, FileCheck,
-  Users, FileText, Cpu
+  HelpCircle, Cpu
 } from 'lucide-react';
 import { marked } from 'marked';
 import { VibeJourney } from './components/VibeJourney';
 import { TaskKanban, type TaskItem } from './components/TaskKanban';
 import { FlowMap, type FeatureNode } from './components/FlowMap';
-import { PricingModal } from './components/PricingModal';
 import { AgentPromptModal } from './components/AgentPromptModal';
 
 interface QuestionItem {
@@ -26,14 +24,12 @@ export default function App() {
   const [title, setTitle] = useState<string>('');
   
   // Modals state
-  const [showPricing, setShowPricing] = useState<boolean>(false);
   const [showAgentPrompt, setShowAgentPrompt] = useState<boolean>(false);
-  const [stats, setStats] = useState<{ users: number; prds: number }>({ users: 1250, prds: 3480 });
 
   // Tech stack target
-  const [frontendTech, setFrontendTech] = useState<string>('Next.js / React (TypeScript)');
-  const [backendTech, setBackendTech] = useState<string>('FastAPI / Python');
-  const [databaseTech, setDatabaseTech] = useState<string>('PostgreSQL + Prisma / SQLAlchemy');
+  const [frontendTech] = useState<string>('Next.js / React (TypeScript)');
+  const [backendTech] = useState<string>('FastAPI / Python');
+  const [databaseTech] = useState<string>('PostgreSQL + Prisma / SQLAlchemy');
 
   // Questionnaire state: Exactly 5 text fields with suggestions
   const [questions, setQuestions] = useState<QuestionItem[]>([]);
@@ -53,22 +49,13 @@ export default function App() {
   const [loadingPrd, setLoadingPrd] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
 
-  // Check Auth Session & Live Stats
+  // Check Auth Session
   useEffect(() => {
     fetch('/api/auth/get-session')
       .then(r => r.json())
       .then(data => {
         if (data && data.user) {
           setUser(data.user);
-        }
-      })
-      .catch(() => {});
-
-    fetch('/api/stats')
-      .then(r => r.json())
-      .then(data => {
-        if (data && data.totalUsers) {
-          setStats({ users: data.totalUsers, prds: data.totalPrds });
         }
       })
       .catch(() => {});
@@ -244,31 +231,8 @@ export default function App() {
           </span>
         </div>
 
-        {/* Center Live Stats Counter */}
-        <div className="hidden md:flex items-center gap-3.5 bg-[#121215] border border-[#27272a] px-3.5 py-1.5 rounded-full text-xs text-zinc-400">
-          <div className="flex items-center gap-1.5">
-            <Users className="w-3.5 h-3.5 text-[#ff5c20]" />
-            <span className="text-zinc-200 font-bold tabular-nums">{stats.users.toLocaleString('id-ID')}</span>
-            <span className="text-zinc-400">Developer</span>
-          </div>
-          <span className="text-zinc-700">•</span>
-          <div className="flex items-center gap-1.5">
-            <FileText className="w-3.5 h-3.5 text-[#ff5c20]" />
-            <span className="text-zinc-200 font-bold tabular-nums">{stats.prds.toLocaleString('id-ID')}</span>
-            <span className="text-zinc-400">PRD Terbuat</span>
-          </div>
-        </div>
-
-        {/* Auth / Upgrade / Profile Area */}
-        <div className="flex items-center gap-2.5 sm:gap-3">
-          <button
-            onClick={() => setShowPricing(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-semibold transition-all cursor-pointer"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-            <span>Upgrade PRO</span>
-            <span className="hidden sm:inline bg-amber-500/20 px-1 py-0.5 rounded text-[10px]">25% OFF</span>
-          </button>
+        {/* Auth / Profile Area */}
+        <div className="flex items-center gap-3">
 
           {user ? (
             <div className="flex items-center gap-3">
@@ -316,12 +280,7 @@ export default function App() {
         
         {/* STEP 1: LANDING & PROMPT INPUT */}
         {step === 1 && (
-          <div className="flex flex-col items-center text-center my-auto py-10 animate-in fade-in zoom-in-95 duration-500">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[#ff5c20]/30 bg-[#ff5c20]/10 text-[#ff5c20] text-xs font-medium mb-6">
-              <Sparkles className="w-3.5 h-3.5" />
-              Generator PRD &amp; Task Pipeline untuk AI Coding Agent
-            </div>
-
+          <div className="flex flex-col items-center text-center my-auto py-16 animate-in fade-in zoom-in-95 duration-500">
             <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight max-w-3xl leading-[1.15] mb-5">
               Dari Ide Jadi <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#ff5c20] to-[#ff946b]">Flow Map, Task, &amp; PRD</span> Siap Pakai.
             </h1>
@@ -350,75 +309,6 @@ export default function App() {
                 </button>
               </div>
             </form>
-
-            {/* Tech Stack Customizer */}
-            <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-xs text-zinc-400">
-              <span className="text-zinc-500 font-medium">Stack Target:</span>
-              <select 
-                value={frontendTech} 
-                onChange={e => setFrontendTech(e.target.value)}
-                className="bg-[#18181b] border border-[#27272a] rounded px-2.5 py-1 text-zinc-300 outline-none"
-              >
-                <option value="Next.js / React (TypeScript)">Frontend: Next.js (TS)</option>
-                <option value="Vite + React (Tailwind)">Frontend: Vite + React</option>
-                <option value="Vue 3 + Nuxt">Frontend: Nuxt 3</option>
-              </select>
-              <select 
-                value={backendTech} 
-                onChange={e => setBackendTech(e.target.value)}
-                className="bg-[#18181b] border border-[#27272a] rounded px-2.5 py-1 text-zinc-300 outline-none"
-              >
-                <option value="FastAPI / Python">Backend: FastAPI (Python)</option>
-                <option value="Node.js / Express">Backend: Node.js (Express)</option>
-                <option value="Go / Gin">Backend: Go (Gin)</option>
-              </select>
-              <select 
-                value={databaseTech} 
-                onChange={e => setDatabaseTech(e.target.value)}
-                className="bg-[#18181b] border border-[#27272a] rounded px-2.5 py-1 text-zinc-300 outline-none"
-              >
-                <option value="PostgreSQL + Prisma">Database: PostgreSQL</option>
-                <option value="MongoDB + Mongoose">Database: MongoDB</option>
-                <option value="SQLite / Supabase">Database: Supabase</option>
-              </select>
-            </div>
-
-            {/* Example Ideas */}
-            <div className="mt-8 flex flex-wrap items-center justify-center gap-2 max-w-2xl">
-              <span className="text-xs text-zinc-600">Coba ide:</span>
-              {[
-                'Aplikasi absensi karyawan GPS & selfie anti fake-location',
-                'SaaS generator invoice & tracking status bayar via WhatsApp',
-                'Marketplace sewa alat outdoor & camping peer-to-peer'
-              ].map((sample, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => setIdea(sample)}
-                  className="text-xs bg-[#18181b] hover:bg-[#27272a] text-[#a1a1aa] hover:text-white px-3 py-1.5 rounded-full border border-[#27272a] transition-all cursor-pointer"
-                >
-                  {sample}
-                </button>
-              ))}
-            </div>
-
-            {/* Feature Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-16 w-full text-left">
-              <div className="p-5 rounded-xl border border-[#27272a] bg-[#121215]/50">
-                <GitFork className="w-5 h-5 text-[#ff5c20] mb-3" />
-                <h3 className="font-semibold text-sm mb-1 text-zinc-200">Flow Map Interaktif</h3>
-                <p className="text-xs text-[#a1a1aa] leading-relaxed">Visualisasi pohon modul fitur dan relasi alur logic yang siap diproses ke task.</p>
-              </div>
-              <div className="p-5 rounded-xl border border-[#27272a] bg-[#121215]/50">
-                <Kanban className="w-5 h-5 text-[#ff5c20] mb-3" />
-                <h3 className="font-semibold text-sm mb-1 text-zinc-200">Task Kanban Board</h3>
-                <p className="text-xs text-[#a1a1aa] leading-relaxed">Task siap eksekusi dengan status To-Do, On-Going, dan Done untuk tracking pengerjaan.</p>
-              </div>
-              <div className="p-5 rounded-xl border border-[#27272a] bg-[#121215]/50">
-                <FileCheck className="w-5 h-5 text-[#ff5c20] mb-3" />
-                <h3 className="font-semibold text-sm mb-1 text-zinc-200">PRD Spec Standar Industri</h3>
-                <p className="text-xs text-[#a1a1aa] leading-relaxed">Dokumen lengkap dengan DDL database, API contracts, dan acceptance criteria siap tempel.</p>
-              </div>
-            </div>
           </div>
         )}
 
@@ -640,7 +530,6 @@ export default function App() {
       </main>
 
       {/* Modals */}
-      <PricingModal isOpen={showPricing} onClose={() => setShowPricing(false)} />
       <AgentPromptModal 
         isOpen={showAgentPrompt} 
         onClose={() => setShowAgentPrompt(false)} 
