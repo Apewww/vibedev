@@ -99,43 +99,90 @@ async def list_workspaces():
 async def attribute_me():
     return {"id": "user_local", "name": "Ivoni", "email": "ivoni@raflylabs.com", "role": "admin"}
 
+MAX_CREDITS_PER_USER = 5
+
+def check_user_credits(request: Request, db: dict, consume: bool = True) -> dict:
+    token = request.cookies.get("better-auth.session_token")
+    if not token:
+        auth_hdr = request.headers.get("Authorization", "")
+        if auth_hdr.startswith("Bearer "):
+            token = auth_hdr[7:].strip()
+    
+    session = db.get("sessions", {}).get(token) if token else None
+    if not session:
+        raise HTTPException(
+            status_code=401, 
+            detail="Silakan login dengan Google terlebih dahulu untuk mendapatkan akses gratis (maksimal 5x request per akun)."
+        )
+    
+    user = db.get("users", {}).get(session["userId"])
+    if not user:
+        raise HTTPException(status_code=401, detail="Sesi login tidak valid. Silakan login kembali.")
+    
+    is_admin = user.get("email") == "Apewinaja@gmail.com" or user.get("role") == "admin"
+    credits_total = 999999 if is_admin else MAX_CREDITS_PER_USER
+    credits_used = user.get("credits_used", 0)
+    
+    if not is_admin and credits_used >= credits_total:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Batas kuota gratis akun Anda ({credits_total}/{credits_total}) telah habis. Hubungi admin untuk menambah kuota."
+        )
+    
+    if consume:
+        user["credits_used"] = credits_used + 1
+        user["credits_total"] = credits_total
+        save_db(db)
+        
+    return user
+
+@app.get("/api/user/credits")
+async def get_user_credits(request: Request):
+    db = load_db()
+    try:
+        user = check_user_credits(request, db, consume=False)
+        is_admin = user.get("email") == "Apewinaja@gmail.com" or user.get("role") == "admin"
+        total = 999999 if is_admin else user.get("credits_total", MAX_CREDITS_PER_USER)
+        used = user.get("credits_used", 0)
+        return {
+            "total": total,
+            "used": used,
+            "remaining": max(0, total - used),
+            "isAdmin": is_admin,
+            "guest": False
+        }
+    except HTTPException:
+        return {
+            "total": MAX_CREDITS_PER_USER,
+            "used": 0,
+            "remaining": MAX_CREDITS_PER_USER,
+            "isAdmin": False,
+            "guest": True
+        }
+
 @app.get("/api/subscription/status")
 async def subscription_status(request: Request):
     db = load_db()
-    sub = db.get("subscription", {
-        "planType": "free",
-        "prdCredits": 1,
-        "usedPrds": 0,
-        "limits": {"revisionChatEnabled": False, "agentPromptExport": False}
-    })
-    return sub
-
-@app.post("/api/subscription/upgrade")
-async def upgrade_subscription(request: Request):
-    db = load_db()
-    body = await request.json() if request.headers.get("content-type") == "application/json" else {}
-    target_plan = body.get("planType", "pro")
-    
-    db["subscription"] = {
-        "planType": target_plan,
-        "prdCredits": 999,
-        "usedPrds": 0,
-        "limits": {"revisionChatEnabled": True, "agentPromptExport": True}
-    }
-    save_db(db)
-    return {"success": True, "subscription": db["subscription"]}
-
-@app.post("/api/subscription/reset")
-async def reset_subscription():
-    db = load_db()
-    db["subscription"] = {
-        "planType": "free",
-        "prdCredits": 1,
-        "usedPrds": 0,
-        "limits": {"revisionChatEnabled": False, "agentPromptExport": False}
-    }
-    save_db(db)
-    return {"success": True, "subscription": db["subscription"]}
+    try:
+        user = check_user_credits(request, db, consume=False)
+        is_admin = user.get("email") == "Apewinaja@gmail.com" or user.get("role") == "admin"
+        total = 999999 if is_admin else user.get("credits_total", MAX_CREDITS_PER_USER)
+        used = user.get("credits_used", 0)
+        return {
+            "planType": "free",
+            "prdCredits": max(0, total - used),
+            "usedPrds": used,
+            "totalCredits": total,
+            "isAdmin": is_admin
+        }
+    except HTTPException:
+        return {
+            "planType": "free",
+            "prdCredits": MAX_CREDITS_PER_USER,
+            "usedPrds": 0,
+            "totalCredits": MAX_CREDITS_PER_USER,
+            "isAdmin": False
+        }
 
 @app.get("/api/templates")
 async def list_templates():
@@ -212,8 +259,9 @@ async def connect_workspace(plan_id: str):
     return {"workspaceId": plan.get("workspaceId", f"ws_{plan_id}")}
 
 @app.post("/api/plan/questions")
-async def generate_questions(body: QuestionsRequest):
+async def generate_questions(body: QuestionsRequest, request: Request):
     db = load_db()
+    check_user_credits(request, db, consume=True)
     plan = db["plans"].get(body.planId)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -302,9 +350,10 @@ Gunakan Bahasa Indonesia.
 
 @app.post("/api/plan/roadmap/generate")
 async def start_roadmap(request: Request):
+    db = load_db()
+    check_user_credits(request, db, consume=True)
     body = await request.json()
     plan_id = body.get("planId")
-    db = load_db()
     plan = db["plans"].get(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -391,9 +440,10 @@ async def roadmap_status(planId: str):
 
 @app.post("/api/plan/generate")
 async def generate_prd(request: Request):
+    db = load_db()
+    check_user_credits(request, db, consume=True)
     body = await request.json()
     plan_id = body.get("planId")
-    db = load_db()
     plan = db["plans"].get(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -425,11 +475,12 @@ Gunakan format Markdown lengkap dengan struktur berikut:
 
 @app.post("/api/plan/revise")
 async def revise_prd(request: Request):
+    db = load_db()
+    check_user_credits(request, db, consume=True)
     body = await request.json()
     plan_id = body.get("planId")
     instruction = body.get("instruction", "")
     
-    db = load_db()
     plan = db["plans"].get(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
@@ -505,13 +556,20 @@ async def google_callback(code: str, state: str = "/"):
     if "sessions" not in db:
         db["sessions"] = {}
 
+    existing_user = db["users"].get(user_id, {})
+    is_admin = email == "Apewinaja@gmail.com"
+    credits_total = 999999 if is_admin else MAX_CREDITS_PER_USER
+    credits_used = existing_user.get("credits_used", 0)
+
     db["users"][user_id] = {
         "id": user_id,
         "email": email,
         "name": name,
         "image": picture,
-        "role": "admin" if email == "Apewinaja@gmail.com" else "user",
-        "onboardingCompleted": True
+        "role": "admin" if is_admin else "user",
+        "onboardingCompleted": True,
+        "credits_total": credits_total,
+        "credits_used": credits_used
     }
 
     session_token = str(uuid.uuid4())
@@ -550,9 +608,20 @@ async def get_session(request: Request):
     if not user:
         return None
 
+    is_admin = user.get("email") == "Apewinaja@gmail.com" or user.get("role") == "admin"
+    total = 999999 if is_admin else user.get("credits_total", MAX_CREDITS_PER_USER)
+    used = user.get("credits_used", 0)
+    user["credits_total"] = total
+
     return {
         "session": session,
-        "user": user
+        "user": user,
+        "credits": {
+            "total": total,
+            "used": used,
+            "remaining": max(0, total - used),
+            "isAdmin": is_admin
+        }
     }
 
 @app.post("/api/auth/sign-out")
@@ -579,9 +648,10 @@ async def get_stats_stream():
 
 @app.post("/api/plan/tasks/generate")
 async def generate_tasks(request: Request):
+    db = load_db()
+    check_user_credits(request, db, consume=True)
     body = await request.json()
     plan_id = body.get("planId")
-    db = load_db()
     plan = db["plans"].get(plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")

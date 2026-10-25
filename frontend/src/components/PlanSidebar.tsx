@@ -1,7 +1,6 @@
 import React from 'react';
 import { 
-  Plus, FileText, Sparkles, 
-  X, LogOut, User as UserIcon, Shield 
+  Plus, FileText, X, LogOut, User as UserIcon, Sparkles 
 } from 'lucide-react';
 
 export interface SavedPlan {
@@ -22,12 +21,12 @@ interface PlanSidebarProps {
   onSelectPlan: (plan: SavedPlan) => void;
   onNewProject: () => void;
   user: any;
-  subscription: {
-    planType: string;
-    prdCredits?: number;
-    usedPrds?: number;
+  credits: {
+    total: number;
+    used: number;
+    remaining: number;
+    isAdmin?: boolean;
   };
-  onOpenPricing: () => void;
   onLogout: () => void;
   onGoogleLogin: () => void;
 }
@@ -40,12 +39,12 @@ export const PlanSidebar: React.FC<PlanSidebarProps> = ({
   onSelectPlan,
   onNewProject,
   user,
-  subscription,
-  onOpenPricing,
+  credits,
   onLogout,
   onGoogleLogin
 }) => {
-  const isPro = subscription.planType === 'pro' || subscription.planType === 'bundle' || subscription.planType === 'pro-bundle';
+  const isAdmin = credits.isAdmin || user?.email === 'Apewinaja@gmail.com';
+  const progressPercent = isAdmin ? 100 : Math.min(100, Math.round((credits.used / credits.total) * 100));
 
   return (
     <>
@@ -67,9 +66,11 @@ export const PlanSidebar: React.FC<PlanSidebarProps> = ({
         <div className="p-4 border-b border-[#222226]">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#ff5c20] to-[#ff8452] flex items-center justify-center font-black text-white text-sm shadow-md shadow-[#ff5c20]/25">
-                V
-              </div>
+              <img 
+                src="/logo.png" 
+                alt="VibeDev Logo" 
+                className="w-7 h-7 rounded-lg object-contain shadow-sm shadow-[#ff5c20]/20" 
+              />
               <span className="font-bold tracking-tight text-white font-mono text-sm">
                 VibeDev <span className="text-[#ff5c20]">AI</span>
               </span>
@@ -108,7 +109,7 @@ export const PlanSidebar: React.FC<PlanSidebarProps> = ({
             <div className="text-center py-10 px-4 text-zinc-500 text-xs">
               <FileText className="w-8 h-8 mx-auto mb-2 text-zinc-700 stroke-[1.5]" />
               <p>Belum ada proyek tersimpan.</p>
-              <p className="text-[11px] text-zinc-600 mt-1">Buat ide pertamamu untuk mulai membuat PRD.</p>
+              <p className="text-[11px] text-zinc-600 mt-1">Ketik ide di canvas untuk mulai membuat PRD.</p>
             </div>
           ) : (
             plans.map((p) => {
@@ -154,42 +155,45 @@ export const PlanSidebar: React.FC<PlanSidebarProps> = ({
           )}
         </div>
 
-        {/* Bottom Membership & Account Card */}
+        {/* Bottom Quota & User Account Card */}
         <div className="p-3 border-t border-[#222226] bg-[#09090b]/50 space-y-3">
-          {/* Subscription Tier Banner */}
+          {/* Quota Banner */}
           <div className="p-3 rounded-xl border border-[#27272a] bg-[#121215]">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5">
-                <Shield className={`w-3.5 h-3.5 ${isPro ? 'text-[#ff5c20]' : 'text-amber-400'}`} />
+                <Sparkles className="w-3.5 h-3.5 text-[#ff5c20]" />
                 <span className="text-xs font-semibold text-white">
-                  {isPro ? 'VibeDev PRO' : 'Free Starter'}
+                  {isAdmin ? 'Admin Unlimited' : 'Akses Free Kuota'}
                 </span>
               </div>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${
-                isPro ? 'bg-[#ff5c20]/20 text-[#ff5c20]' : 'bg-zinc-800 text-zinc-400'
-              }`}>
-                {isPro ? 'UNLIMITED' : '1 KUOTA'}
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-mono font-bold bg-[#ff5c20]/20 text-[#ff5c20]">
+                {isAdmin ? 'UNLIMITED' : `${credits.remaining} TERSISA`}
               </span>
             </div>
 
-            <p className="text-[11px] text-zinc-400 leading-tight mb-2.5">
-              {isPro
-                ? 'Akses penuh DDL Database, API contracts, dan Agent Checkpoint Prompt.'
-                : '1 PRD gratis. Buka semua fitur eksekusi AI coding dengan Pro.'}
-            </p>
-
-            {!isPro && (
-              <button
-                onClick={() => {
-                  onOpenPricing();
-                  if (window.innerWidth < 1024) onClose();
-                }}
-                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black text-xs font-bold transition-all shadow-sm cursor-pointer"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Upgrade PRO</span>
-                <span className="bg-black/20 text-black px-1 rounded text-[9px]">25% OFF</span>
-              </button>
+            {isAdmin ? (
+              <p className="text-[11px] text-zinc-400 leading-tight">
+                Akun admin memiliki kuota request tanpa batas pada 9router gateway.
+              </p>
+            ) : (
+              <>
+                <div className="flex items-center justify-between text-[11px] text-zinc-400 mb-1.5">
+                  <span>Pemakaian token:</span>
+                  <span className="font-mono text-zinc-200">{credits.used} / {credits.total} request</span>
+                </div>
+                {/* Progress bar */}
+                <div className="w-full bg-[#18181b] rounded-full h-1.5 overflow-hidden">
+                  <div 
+                    className={`h-full transition-all duration-500 rounded-full ${
+                      credits.remaining > 1 ? 'bg-[#ff5c20]' : 'bg-red-500'
+                    }`}
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-zinc-500 mt-2">
+                  1 akun Google dibatasi maksimal 5x request untuk mengamankan kuota LLM.
+                </p>
+              </>
             )}
           </div>
 
@@ -198,7 +202,7 @@ export const PlanSidebar: React.FC<PlanSidebarProps> = ({
             <div className="flex items-center justify-between p-2 rounded-lg bg-[#121215] border border-[#222226]">
               <div className="flex items-center gap-2 min-w-0">
                 {user.image ? (
-                  <img src={user.image} alt={user.name} className="w-7 h-7 rounded-full shrink-0" />
+                  <img src={user.image} alt={user.name} className="w-7 h-7 rounded-full shrink-0 border border-zinc-700" />
                 ) : (
                   <div className="w-7 h-7 rounded-full bg-[#ff5c20] text-xs flex items-center justify-center font-bold text-white shrink-0">
                     {user.name?.[0] || 'U'}
@@ -221,7 +225,7 @@ export const PlanSidebar: React.FC<PlanSidebarProps> = ({
           ) : (
             <button
               onClick={onGoogleLogin}
-              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg border border-[#27272a] bg-[#121215] hover:bg-[#1a1a1f] text-zinc-300 hover:text-white text-xs font-medium transition-colors cursor-pointer"
+              className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-lg border border-[#ff5c20]/40 bg-[#ff5c20]/10 hover:bg-[#ff5c20]/20 text-[#ff5c20] text-xs font-semibold transition-colors cursor-pointer shadow-sm"
             >
               <UserIcon className="w-3.5 h-3.5" />
               <span>Masuk dengan Google</span>

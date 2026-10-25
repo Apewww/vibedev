@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { 
   ArrowRight, Copy, Check, ArrowLeft, RefreshCw, 
   Menu, Sparkles, Terminal, FileText, Cpu, 
-  MessageSquare, Layers, GitFork, CheckCircle2 
+  MessageSquare, Layers, GitFork, CheckCircle2, 
+  User as UserIcon, X, ShieldAlert
 } from 'lucide-react';
 import { marked } from 'marked';
 import { VibeJourney } from './components/VibeJourney';
 import { PlanSidebar, type SavedPlan } from './components/PlanSidebar';
 import { TaskKanban, type TaskItem } from './components/TaskKanban';
 import { FlowMap, type FeatureNode } from './components/FlowMap';
-import { PricingModal } from './components/PricingModal';
 import { AgentPromptModal } from './components/AgentPromptModal';
 
 interface QuestionItem {
@@ -19,16 +19,18 @@ interface QuestionItem {
 }
 
 export default function App() {
-  // User & Subscription state
+  // User & Credits Quota state
   const [user, setUser] = useState<any>(null);
-  const [subscription, setSubscription] = useState<{
-    planType: string;
-    prdCredits?: number;
-    usedPrds?: number;
+  const [credits, setCredits] = useState<{
+    total: number;
+    used: number;
+    remaining: number;
+    isAdmin?: boolean;
   }>({
-    planType: 'free',
-    prdCredits: 1,
-    usedPrds: 0
+    total: 5,
+    used: 0,
+    remaining: 5,
+    isAdmin: false
   });
 
   // Sidebar & History state
@@ -65,32 +67,33 @@ export default function App() {
   const [revisingPrd, setRevisingPrd] = useState<boolean>(false);
 
   // Modals state
-  const [showPricing, setShowPricing] = useState<boolean>(false);
   const [showAgentPrompt, setShowAgentPrompt] = useState<boolean>(false);
-
-  const isPro = subscription.planType === 'pro' || subscription.planType === 'bundle' || subscription.planType === 'pro-bundle';
+  const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string>('');
 
   // Initial Data Fetching
   useEffect(() => {
-    // 1. Fetch User Session
-    fetch('/api/auth/get-session')
-      .then(r => r.json())
-      .then(data => {
-        if (data && data.user) setUser(data.user);
-      })
-      .catch(() => {});
+    // 1. Fetch User Session & Credits
+    fetchSessionAndCredits();
 
-    // 2. Fetch Subscription Status
-    fetch('/api/subscription/status')
-      .then(r => r.json())
-      .then(data => {
-        if (data && data.planType) setSubscription(data);
-      })
-      .catch(() => {});
-
-    // 3. Fetch Saved Plans History
+    // 2. Fetch Saved Plans History
     fetchSavedPlans();
   }, []);
+
+  const fetchSessionAndCredits = async () => {
+    try {
+      const res = await fetch('/api/auth/get-session');
+      const data = await res.json();
+      if (data && data.user) {
+        setUser(data.user);
+        if (data.credits) {
+          setCredits(data.credits);
+        }
+      }
+    } catch (e) {
+      console.error('Session fetch error:', e);
+    }
+  };
 
   const fetchSavedPlans = async () => {
     try {
@@ -122,6 +125,7 @@ export default function App() {
   const handleLogout = async () => {
     await fetch('/api/auth/sign-out', { method: 'POST' });
     setUser(null);
+    setCredits({ total: 5, used: 0, remaining: 5, isAdmin: false });
   };
 
   // Reset to New Project
@@ -136,6 +140,7 @@ export default function App() {
     setTasks([]);
     setStep(1);
     setMaxStepReached(1);
+    setErrorMessage('');
   };
 
   // Select an existing plan from sidebar
@@ -191,6 +196,10 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ planId: pId })
       });
+      if (qRes.status === 401) {
+        setShowAuthModal(true);
+        return;
+      }
       const qData = await qRes.json();
       setQuestions(qData.questions || []);
     } catch (e) {
@@ -205,7 +214,15 @@ export default function App() {
     if (e) e.preventDefault();
     if (!idea.trim()) return;
 
+    // Check if user is logged in
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
     setLoadingQuestions(true);
+    setErrorMessage('');
+
     try {
       const pRes = await fetch('/api/plan/create', {
         method: 'POST',
@@ -217,7 +234,6 @@ export default function App() {
       setPlanId(newPlanId);
       setTitle(pData.plan?.title || idea.slice(0, 45));
 
-      // Refresh sidebar list
       fetchSavedPlans();
 
       // Fetch 5 clarification questions
@@ -226,8 +242,21 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ planId: newPlanId })
       });
+
+      if (qRes.status === 401) {
+        setShowAuthModal(true);
+        return;
+      }
+
+      if (qRes.status === 429) {
+        const errJson = await qRes.json();
+        setErrorMessage(errJson.detail || 'Batas kuota gratis akun Anda telah habis.');
+        return;
+      }
+
       const qData = await qRes.json();
       setQuestions(qData.questions || []);
+      fetchSessionAndCredits();
     } catch (err) {
       console.error(err);
       alert('Terjadi kesalahan memproses ide.');
@@ -238,24 +267,40 @@ export default function App() {
 
   // STEP 1 -> STEP 2: Submit questions answers -> Generate PRD Spec (Feature Roadmap & Architecture Tree)
   const handleGeneratePRDSpec = async () => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
     setLoadingSpec(true);
     setStep(2);
     setMaxStepReached(prev => Math.max(prev, 2));
+    setErrorMessage('');
 
     try {
-      // 1. Save answers
       await fetch(`/api/plan/${planId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ questionAnswers: answers })
       });
 
-      // 2. Generate roadmap / feature tree
       const rRes = await fetch('/api/plan/roadmap/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ planId })
       });
+
+      if (rRes.status === 401) {
+        setShowAuthModal(true);
+        return;
+      }
+
+      if (rRes.status === 429) {
+        const errJson = await rRes.json();
+        setErrorMessage(errJson.detail || 'Batas kuota gratis akun Anda telah habis.');
+        return;
+      }
+
       const rData = await rRes.json();
       if (rData.title) setTitle(rData.title);
 
@@ -267,6 +312,7 @@ export default function App() {
       }));
       setFeatures(featureTree);
       fetchSavedPlans();
+      fetchSessionAndCredits();
     } catch (err) {
       console.error(err);
       alert('Terjadi kesalahan menyusun PRD Spec.');
@@ -277,9 +323,15 @@ export default function App() {
 
   // STEP 2 -> STEP 3: From PRD Spec -> Generate Comprehensive Dokumen PRD + Task Pipeline
   const handleGeneratePRDAndTasks = async () => {
+    if (!user) {
+      setShowAuthModal(true);
+      return;
+    }
+
     setLoadingFinalPipeline(true);
     setStep(3);
     setMaxStepReached(prev => Math.max(prev, 3));
+    setErrorMessage('');
 
     try {
       // 1. Generate full PRD markdown
@@ -288,6 +340,17 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ planId })
       });
+
+      if (prdRes.status === 401) {
+        setShowAuthModal(true);
+        return;
+      }
+      if (prdRes.status === 429) {
+        const errJson = await prdRes.json();
+        setErrorMessage(errJson.detail || 'Batas kuota gratis akun Anda telah habis.');
+        return;
+      }
+
       const prdData = await prdRes.json();
       setPrdMarkdown(prdData.content || '');
 
@@ -301,6 +364,7 @@ export default function App() {
       setTasks(tData.tasks || []);
 
       fetchSavedPlans();
+      fetchSessionAndCredits();
     } catch (err) {
       console.error(err);
       alert('Terjadi kesalahan membuat Dokumen PRD dan Task.');
@@ -321,12 +385,22 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ planId, instruction: revisionPrompt })
       });
+      if (res.status === 401) {
+        setShowAuthModal(true);
+        return;
+      }
+      if (res.status === 429) {
+        const errJson = await res.json();
+        setErrorMessage(errJson.detail || 'Batas kuota gratis akun Anda telah habis.');
+        return;
+      }
       const data = await res.json();
       if (data.content) {
         setPrdMarkdown(data.content);
         setRevisionPrompt('');
         setShowRevision(false);
       }
+      fetchSessionAndCredits();
     } catch (e) {
       alert('Gagal merevisi PRD');
     } finally {
@@ -354,15 +428,6 @@ export default function App() {
     setTimeout(() => setCopiedPrd(false), 2000);
   };
 
-  // Pro Upgrade Callback
-  const handleUpgradeSuccess = (planType: string) => {
-    setSubscription({
-      planType,
-      prdCredits: 999,
-      usedPrds: 0
-    });
-  };
-
   return (
     <div className="min-h-screen flex flex-col bg-[#09090b] text-[#fafafa] selection:bg-[#ff5c20]/30 selection:text-white">
       {/* Collapsible Left Sidebar */}
@@ -374,14 +439,13 @@ export default function App() {
         onSelectPlan={handleSelectPlan}
         onNewProject={handleNewProject}
         user={user}
-        subscription={subscription}
-        onOpenPricing={() => setShowPricing(true)}
+        credits={credits}
         onLogout={handleLogout}
         onGoogleLogin={handleGoogleLogin}
       />
 
       {/* Top Navbar */}
-      <header className="sticky top-0 z-30 border-b border-[#27272a] bg-[#09090b]/85 backdrop-blur-md px-4 sm:px-6 py-3 flex items-center justify-between gap-4">
+      <header className="sticky top-0 z-30 border-b border-[#27272a] bg-[#09090b]/85 backdrop-blur-md px-4 sm:px-6 py-2.5 flex items-center justify-between gap-4">
         {/* Left: Sidebar Toggle & Brand / Project Title */}
         <div className="flex items-center gap-3 min-w-0">
           <button
@@ -394,12 +458,14 @@ export default function App() {
 
           <div 
             onClick={handleNewProject}
-            className="flex items-center gap-2 cursor-pointer shrink-0"
+            className="flex items-center gap-2.5 cursor-pointer shrink-0"
             title="Kembali ke Dashboard Utama"
           >
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#ff5c20] to-[#ff8452] flex items-center justify-center font-black text-white text-sm shadow-md shadow-[#ff5c20]/25">
-              V
-            </div>
+            <img 
+              src="/logo.png" 
+              alt="VibeDev AI Logo" 
+              className="w-8 h-8 rounded-lg object-contain shadow-md shadow-[#ff5c20]/25" 
+            />
             <span className="font-bold tracking-tight text-base text-white font-mono hidden md:inline">
               VibeDev <span className="text-[#ff5c20]">AI</span>
             </span>
@@ -427,45 +493,38 @@ export default function App() {
           />
         </div>
 
-        {/* Right: Actions, Upgrade & Profile */}
+        {/* Right: Actions, Quota Counter & Profile */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           {/* Agent Checkpoint Bridge Button (Active on Step 3) */}
           {step === 3 && (
             <button
-              onClick={() => {
-                if (!isPro) {
-                  setShowPricing(true);
-                } else {
-                  setShowAgentPrompt(true);
-                }
-              }}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg border border-[#ff5c20]/40 bg-[#ff5c20]/10 hover:bg-[#ff5c20]/20 text-[#ff5c20] text-xs font-semibold transition-all shadow-sm shadow-[#ff5c20]/20 cursor-pointer"
+              onClick={() => setShowAgentPrompt(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#ff5c20]/40 bg-[#ff5c20]/10 hover:bg-[#ff5c20]/20 text-[#ff5c20] text-xs font-semibold transition-all shadow-sm shadow-[#ff5c20]/20 cursor-pointer"
               title="Hubungkan ke Cursor, Claude Code, atau Antigravity"
             >
               <Cpu className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Hubungkan Agent</span>
               <span className="sm:hidden">Agent</span>
-              {!isPro && (
-                <span className="bg-[#ff5c20] text-white text-[9px] px-1 rounded font-mono font-bold">PRO</span>
-              )}
             </button>
           )}
 
-          {/* Upgrade PRO Button for Free Users */}
-          {!isPro && (
-            <button
-              onClick={() => setShowPricing(true)}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-black text-xs font-bold transition-all shadow-sm cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-black" />
-              <span>Upgrade PRO</span>
-              <span className="hidden md:inline bg-black/20 text-black px-1 rounded text-[10px]">25% OFF</span>
-            </button>
+          {/* Free Quota Badge */}
+          {user && (
+            <div className="hidden md:flex items-center gap-1.5 bg-[#121215] border border-[#27272a] px-2.5 py-1 rounded-full text-xs text-zinc-300">
+              <Sparkles className="w-3.5 h-3.5 text-[#ff5c20]" />
+              {credits.isAdmin ? (
+                <span className="font-mono text-zinc-200 font-bold">Admin Unlimited</span>
+              ) : (
+                <span>
+                  Sisa Kuota: <strong className="font-mono text-white">{credits.remaining}</strong>/5
+                </span>
+              )}
+            </div>
           )}
 
           {/* User Profile Avatar */}
           {user ? (
-            <div className="flex items-center gap-2 pl-2">
+            <div className="flex items-center gap-2 pl-1">
               {user.image ? (
                 <img src={user.image} alt={user.name} className="w-7 h-7 rounded-full border border-zinc-700" />
               ) : (
@@ -477,13 +536,25 @@ export default function App() {
           ) : (
             <button
               onClick={handleGoogleLogin}
-              className="text-xs bg-[#121215] hover:bg-[#1c1c21] border border-[#27272a] text-zinc-300 hover:text-white px-3 py-1.5 rounded-lg font-medium transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 text-xs bg-[#ff5c20] hover:bg-[#e04f18] text-white px-3 py-1.5 rounded-lg font-semibold shadow-md shadow-[#ff5c20]/25 transition-all cursor-pointer"
             >
-              Masuk
+              <UserIcon className="w-3.5 h-3.5" />
+              <span>Masuk Google</span>
             </button>
           )}
         </div>
       </header>
+
+      {/* Quota Exceeded Alert Banner (if any) */}
+      {errorMessage && (
+        <div className="bg-red-950/80 border-b border-red-800 text-red-200 px-4 py-2.5 text-xs text-center flex items-center justify-center gap-2 animate-in fade-in">
+          <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
+          <span>{errorMessage}</span>
+          <button onClick={() => setErrorMessage('')} className="ml-2 underline font-bold cursor-pointer">
+            Tutup
+          </button>
+        </div>
+      )}
 
       {/* Main Responsive Canvas */}
       <main className="flex-1 flex flex-col p-4 sm:p-8 max-w-5xl mx-auto w-full">
@@ -504,6 +575,12 @@ export default function App() {
             {/* If no questions generated yet, show prompt input */}
             {questions.length === 0 ? (
               <div className="flex flex-col items-center text-center max-w-3xl mx-auto">
+                {/* Branding Badge */}
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[#ff5c20]/30 bg-[#ff5c20]/10 text-[#ff5c20] text-xs font-semibold mb-6 shadow-sm">
+                  <img src="/logo.png" alt="VibeDev" className="w-4 h-4 object-contain" />
+                  <span>VibeDev AI • Free Generator PRD &amp; Task Pipeline</span>
+                </div>
+
                 <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight max-w-2xl leading-[1.2] mb-4">
                   Dari Ide Jadi <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#ff5c20] to-[#ff946b]">Flow Map, Task, &amp; PRD</span> Siap Pakai.
                 </h1>
@@ -792,7 +869,7 @@ export default function App() {
                       step3SubTab === 'tasks' ? 'bg-[#ff5c20] text-white' : 'text-zinc-400 hover:text-white'
                     }`}
                   >
-                    <Layers className="w-3.5 h-3.5 inline mr-1" /> Task Kanban ({tasks.length})
+                    <Layers className="w-3.5 h-3.5 inline mr-1" /> Task Pipeline ({tasks.length})
                   </button>
                 </div>
 
@@ -817,18 +894,11 @@ export default function App() {
                 )}
 
                 <button
-                  onClick={() => {
-                    if (!isPro) {
-                      setShowPricing(true);
-                    } else {
-                      setShowAgentPrompt(true);
-                    }
-                  }}
+                  onClick={() => setShowAgentPrompt(true)}
                   className="flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold transition-all shadow-md shadow-[#ff5c20]/25 cursor-pointer"
                 >
                   <Cpu className="w-4 h-4" />
                   <span>Hubungkan AI Agent</span>
-                  {!isPro && <span className="bg-black/25 px-1 py-0.5 rounded text-[10px]">PRO</span>}
                 </button>
               </div>
             </div>
@@ -840,7 +910,7 @@ export default function App() {
                   <span className="text-xs font-semibold text-amber-400 flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5" /> Instruksi AI Revisi PRD
                   </span>
-                  <button type="button" onClick={() => setShowRevision(false)} className="text-xs text-zinc-500 hover:text-zinc-300">
+                  <button type="button" onClick={() => setShowRevision(false)} className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer">
                     Tutup
                   </button>
                 </div>
@@ -872,43 +942,21 @@ export default function App() {
                     <p className="text-xs text-zinc-500">Menganalisis DDL database, arsitektur modul, dan spesifikasi API.</p>
                   </div>
                 ) : (
-                  <>
-                    <div 
-                      className="prose prose-invert max-w-none text-xs sm:text-sm leading-relaxed 
-                        prose-headings:text-zinc-100 prose-headings:font-bold prose-headings:tracking-tight 
-                        prose-h1:text-xl sm:prose-h1:text-2xl prose-h1:border-b prose-h1:border-zinc-800 prose-h1:pb-2
-                        prose-h2:text-base sm:prose-h2:text-lg prose-h2:text-[#ff7842] prose-h2:mt-6 prose-h2:mb-3
-                        prose-p:text-zinc-300 prose-ul:text-zinc-300 prose-li:my-1
-                        prose-pre:bg-[#09090b] prose-pre:border prose-pre:border-[#27272a] prose-pre:rounded-lg
-                        prose-code:text-[#ff8452] prose-code:font-mono prose-code:text-[11px]"
-                      dangerouslySetInnerHTML={{ __html: marked.parse(prdMarkdown || '# PRD Kosong') as string }}
-                    />
-
-                    {/* Pro Paywall Teaser Banner if user is Free */}
-                    {!isPro && (
-                      <div className="mt-8 p-4 rounded-xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-[#18181b] to-amber-500/5 flex flex-col sm:flex-row items-center justify-between gap-4">
-                        <div className="space-y-1">
-                          <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                            <Sparkles className="w-3.5 h-3.5" /> Buka Akses Agent Checkpoint Protocol &amp; DDL Penuh
-                          </span>
-                          <p className="text-[11px] text-zinc-400">
-                            Upgrade ke VibeDev Pro untuk mendapatkan instruksi step-by-step coding agent tanpa limit token.
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => setShowPricing(true)}
-                          className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-black text-xs font-bold transition-all shrink-0 cursor-pointer"
-                        >
-                          Lihat Paket Pro
-                        </button>
-                      </div>
-                    )}
-                  </>
+                  <div 
+                    className="prose prose-invert max-w-none text-xs sm:text-sm leading-relaxed 
+                      prose-headings:text-zinc-100 prose-headings:font-bold prose-headings:tracking-tight 
+                      prose-h1:text-xl sm:prose-h1:text-2xl prose-h1:border-b prose-h1:border-zinc-800 prose-h1:pb-2
+                      prose-h2:text-base sm:prose-h2:text-lg prose-h2:text-[#ff7842] prose-h2:mt-6 prose-h2:mb-3
+                      prose-p:text-zinc-300 prose-ul:text-zinc-300 prose-li:my-1
+                      prose-pre:bg-[#09090b] prose-pre:border prose-pre:border-[#27272a] prose-pre:rounded-lg
+                      prose-code:text-[#ff8452] prose-code:font-mono prose-code:text-[11px]"
+                    dangerouslySetInnerHTML={{ __html: marked.parse(prdMarkdown || '# PRD Kosong') as string }}
+                  />
                 )}
               </div>
             )}
 
-            {/* Sub-tab 2: TASK KANBAN PIPELINE */}
+            {/* Sub-tab 2: TASK KANBAN & TABLE PIPELINE */}
             {step3SubTab === 'tasks' && (
               <div className="space-y-4">
                 {/* Checkpoint Protocol STOP Alert */}
@@ -939,12 +987,49 @@ export default function App() {
         )}
       </main>
 
-      {/* Pricing & Upgrade Modal */}
-      <PricingModal 
-        isOpen={showPricing} 
-        onClose={() => setShowPricing(false)} 
-        onUpgradeSuccess={handleUpgradeSuccess}
-      />
+      {/* Google Login Required Modal */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-[#121215] border border-[#27272a] rounded-2xl p-6 sm:p-8 shadow-2xl text-center space-y-5">
+            <button
+              onClick={() => setShowAuthModal(false)}
+              className="absolute top-4 right-4 p-1.5 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <img 
+              src="/logo.png" 
+              alt="VibeDev Logo" 
+              className="w-14 h-14 mx-auto object-contain shadow-lg shadow-[#ff5c20]/25 rounded-xl"
+            />
+
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold text-white">Masuk dengan Akun Google</h3>
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                Untuk mengamankan kuota AI dan mencegah bot, silakan login dengan Google. Setiap akun mendapatkan <strong>5x kuota generator gratis</strong> untuk PRD, Flow Map, dan Task Pipeline.
+              </p>
+            </div>
+
+            <button
+              onClick={handleGoogleLogin}
+              className="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl bg-white hover:bg-zinc-100 text-zinc-900 text-xs font-bold shadow-lg transition-all cursor-pointer"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+              </svg>
+              <span>Lanjutkan dengan Google</span>
+            </button>
+
+            <p className="text-[10px] text-zinc-500">
+              100% Gratis • Tanpa Kartu Kredit • Langsung Pakai
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* AI Agent Checkpoint Prompt Modal */}
       <AgentPromptModal 
