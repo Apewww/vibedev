@@ -71,8 +71,33 @@ export default function App() {
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
+  const getAuthHeaders = (): Record<string, string> => {
+    const token = localStorage.getItem('vibedev_session_token');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    return headers;
+  };
+
   // Initial Data Fetching
   useEffect(() => {
+    // 0. Handle OAuth redirect session_token param in URL if returned from Google
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('session_token');
+      if (token) {
+        document.cookie = `better-auth.session_token=${token}; path=/; max-age=${30 * 86400}; SameSite=Lax`;
+        localStorage.setItem('vibedev_session_token', token);
+        const newUrl = window.location.pathname + (window.location.hash || '');
+        window.history.replaceState({}, document.title, newUrl);
+      }
+    } catch (e) {
+      console.error('Error handling session token from URL:', e);
+    }
+
     // 1. Fetch User Session & Credits
     fetchSessionAndCredits();
 
@@ -82,12 +107,21 @@ export default function App() {
 
   const fetchSessionAndCredits = async () => {
     try {
-      const res = await fetch('/api/auth/get-session');
-      const data = await res.json();
-      if (data && data.user) {
-        setUser(data.user);
-        if (data.credits) {
-          setCredits(data.credits);
+      const token = localStorage.getItem('vibedev_session_token');
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      const res = await fetch('/api/auth/get-session', { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.user) {
+          setUser(data.user);
+          if (data.credits) {
+            setCredits(data.credits);
+          }
+        } else {
+          setUser(null);
         }
       }
     } catch (e) {
@@ -97,7 +131,7 @@ export default function App() {
 
   const fetchSavedPlans = async () => {
     try {
-      const res = await fetch('/api/plan/list');
+      const res = await fetch('/api/plan/list', { headers: getAuthHeaders() });
       const data = await res.json();
       if (data && Array.isArray(data.plans)) {
         const sorted = data.plans.sort((a: any, b: any) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -110,20 +144,37 @@ export default function App() {
 
   const handleGoogleLogin = async () => {
     try {
+      const callbackURL = window.location.origin + window.location.pathname;
       const res = await fetch('/api/auth/sign-in/social', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider: 'google', callbackURL: window.location.pathname })
+        body: JSON.stringify({ provider: 'google', callbackURL })
       });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
+      if (data && data.url) {
+        window.location.href = data.url;
+      } else {
+        alert('Gagal mendapatkan link login Google.');
+      }
     } catch (e) {
-      alert('Gagal menginisialisasi login Google');
+      console.error('Google login error:', e);
+      alert('Gagal menginisialisasi login Google. Periksa backend server.');
     }
   };
 
   const handleLogout = async () => {
-    await fetch('/api/auth/sign-out', { method: 'POST' });
+    try {
+      const token = localStorage.getItem('vibedev_session_token');
+      const headers: Record<string, string> = {};
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      await fetch('/api/auth/sign-out', { method: 'POST', headers });
+    } catch (e) {
+      console.error('Logout error:', e);
+    }
+    document.cookie = "better-auth.session_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC;";
+    localStorage.removeItem('vibedev_session_token');
     setUser(null);
     setCredits({ total: 5, used: 0, remaining: 5, isAdmin: false });
   };
@@ -193,7 +244,7 @@ export default function App() {
     try {
       const qRes = await fetch('/api/plan/questions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ planId: pId })
       });
       if (qRes.status === 401) {
@@ -226,7 +277,7 @@ export default function App() {
     try {
       const pRes = await fetch('/api/plan/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ idea, language: 'id' })
       });
       const pData = await pRes.json();
@@ -239,7 +290,7 @@ export default function App() {
       // Fetch 5 clarification questions
       const qRes = await fetch('/api/plan/questions', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ planId: newPlanId })
       });
 
@@ -280,13 +331,13 @@ export default function App() {
     try {
       await fetch(`/api/plan/${planId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ questionAnswers: answers })
       });
 
       const rRes = await fetch('/api/plan/roadmap/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ planId })
       });
 
@@ -337,7 +388,7 @@ export default function App() {
       // 1. Generate full PRD markdown
       const prdRes = await fetch('/api/plan/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ planId })
       });
 
@@ -357,7 +408,7 @@ export default function App() {
       // 2. Generate phased Kanban tasks
       const tRes = await fetch('/api/plan/tasks/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ planId })
       });
       const tData = await tRes.json();
@@ -382,7 +433,7 @@ export default function App() {
     try {
       const res = await fetch('/api/plan/revise', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ planId, instruction: revisionPrompt })
       });
       if (res.status === 401) {
@@ -414,7 +465,7 @@ export default function App() {
     try {
       await fetch(`/api/plan/${planId}/tasks/${taskId}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ status: newStatus })
       });
     } catch (e) {

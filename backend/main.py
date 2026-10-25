@@ -8,6 +8,13 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
+env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+if os.path.exists(env_file):
+    load_dotenv(env_file)
+else:
+    load_dotenv()
 
 app = FastAPI(title="VibeDev Backend", description="PRD Generator API Engine")
 
@@ -19,9 +26,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-ROUTER_URL = "https://9router.raflylabs.com/v1/chat/completions"
+ROUTER_URL = os.getenv("ROUTER_URL", "https://9router.raflylabs.com/v1/chat/completions")
 ROUTER_KEY = os.getenv("ROUTER_KEY", "sk-135ab29b75e9590d-zxgcfe-1cf93bca")
-ROUTER_MODEL = "vibedev"
+ROUTER_MODEL = os.getenv("ROUTER_MODEL", "vibedev")
 
 DB_FILE = os.getenv(
     "DB_FILE",
@@ -119,7 +126,7 @@ def check_user_credits(request: Request, db: dict, consume: bool = True) -> dict
     if not user:
         raise HTTPException(status_code=401, detail="Sesi login tidak valid. Silakan login kembali.")
     
-    is_admin = user.get("email") == "Apewinaja@gmail.com" or user.get("role") == "admin"
+    is_admin = (user.get("email") or "").lower() == "apewinaja@gmail.com" or user.get("role") == "admin"
     credits_total = 999999 if is_admin else MAX_CREDITS_PER_USER
     credits_used = user.get("credits_used", 0)
     
@@ -141,7 +148,7 @@ async def get_user_credits(request: Request):
     db = load_db()
     try:
         user = check_user_credits(request, db, consume=False)
-        is_admin = user.get("email") == "Apewinaja@gmail.com" or user.get("role") == "admin"
+        is_admin = (user.get("email") or "").lower() == "apewinaja@gmail.com" or user.get("role") == "admin"
         total = 999999 if is_admin else user.get("credits_total", MAX_CREDITS_PER_USER)
         used = user.get("credits_used", 0)
         return {
@@ -505,7 +512,7 @@ Revisi dan perbarui PRD di atas sesuai instruksi secara presisi. Kembalikan HANY
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-REDIRECT_URI = "https://vibedev.raflylabs.com/api/auth/callback/google"
+REDIRECT_URI = os.getenv("REDIRECT_URI", "https://vibedev.raflylabs.com/api/auth/callback/google")
 
 from fastapi.responses import RedirectResponse
 
@@ -513,29 +520,32 @@ from fastapi.responses import RedirectResponse
 async def sign_in_social(request: Request):
     body = await request.json()
     callback_url = body.get("callbackURL") or "/"
+    redirect_uri = os.getenv("REDIRECT_URI", REDIRECT_URI)
     auth_url = (
         "https://accounts.google.com/o/oauth2/v2/auth?"
         f"client_id={GOOGLE_CLIENT_ID}&"
-        f"redirect_uri={REDIRECT_URI}&"
+        f"redirect_uri={redirect_uri}&"
         "response_type=code&"
         "scope=openid%20email%20profile&"
+        "prompt=select_account&"
         f"state={callback_url}"
     )
     return {"url": auth_url, "redirect": True}
 
 @app.get("/api/auth/callback/google")
-async def google_callback(code: str, state: str = "/"):
+async def google_callback(request: Request, code: str, state: str = "/"):
     token_url = "https://oauth2.googleapis.com/token"
+    redirect_uri = os.getenv("REDIRECT_URI", REDIRECT_URI)
     data = {
         "code": code,
         "client_id": GOOGLE_CLIENT_ID,
         "client_secret": GOOGLE_CLIENT_SECRET,
-        "redirect_uri": REDIRECT_URI,
+        "redirect_uri": redirect_uri,
         "grant_type": "authorization_code",
     }
     r = requests.post(token_url, data=data)
     if not r.ok:
-        raise HTTPException(status_code=400, detail="Failed to get token from Google")
+        raise HTTPException(status_code=400, detail=f"Failed to get token from Google: {r.text}")
     
     tokens = r.json()
     access_token = tokens.get("access_token")
@@ -557,7 +567,7 @@ async def google_callback(code: str, state: str = "/"):
         db["sessions"] = {}
 
     existing_user = db["users"].get(user_id, {})
-    is_admin = email == "Apewinaja@gmail.com"
+    is_admin = (email or "").lower() == "apewinaja@gmail.com"
     credits_total = 999999 if is_admin else MAX_CREDITS_PER_USER
     credits_used = existing_user.get("credits_used", 0)
 
@@ -580,13 +590,19 @@ async def google_callback(code: str, state: str = "/"):
     }
     save_db(db)
 
-    response = RedirectResponse(url=state or "/")
+    # Attach session_token to redirect URL for cross-environment compatibility
+    target_url = state or "/"
+    sep = "&" if "?" in target_url else "?"
+    redirect_url = f"{target_url}{sep}session_token={session_token}"
+
+    is_https = request.url.scheme == "https"
+    response = RedirectResponse(url=redirect_url)
     response.set_cookie(
         key="better-auth.session_token",
         value=session_token,
         max_age=30 * 86400,
         httponly=False,
-        secure=True,
+        secure=is_https,
         samesite="lax"
     )
     return response
@@ -608,7 +624,7 @@ async def get_session(request: Request):
     if not user:
         return None
 
-    is_admin = user.get("email") == "Apewinaja@gmail.com" or user.get("role") == "admin"
+    is_admin = (user.get("email") or "").lower() == "apewinaja@gmail.com" or user.get("role") == "admin"
     total = 999999 if is_admin else user.get("credits_total", MAX_CREDITS_PER_USER)
     used = user.get("credits_used", 0)
     user["credits_total"] = total
@@ -627,6 +643,10 @@ async def get_session(request: Request):
 @app.post("/api/auth/sign-out")
 async def sign_out(request: Request):
     token = request.cookies.get("better-auth.session_token")
+    if not token:
+        auth_hdr = request.headers.get("Authorization", "")
+        if auth_hdr.startswith("Bearer "):
+            token = auth_hdr[7:].strip()
     if token:
         db = load_db()
         if "sessions" in db and token in db["sessions"]:
@@ -635,6 +655,7 @@ async def sign_out(request: Request):
     res = JSONResponse(content={"success": True})
     res.delete_cookie("better-auth.session_token")
     return res
+
 
 @app.get("/api/youtube/subscriber-count")
 async def get_yt_subscribers():
