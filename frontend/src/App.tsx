@@ -1042,11 +1042,12 @@ export default function App() {
           <div className="flex flex-col space-y-5 animate-in fade-in duration-300">
             {/* Stage Toolbar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3.5 border-b border-[#27272a]">
-              <div className="flex items-center gap-2.5">
-                <span className="w-2 h-2 rounded-full bg-[#ff5c20] animate-pulse shrink-0" />
-                <span className="text-xs sm:text-sm font-bold uppercase tracking-wider text-zinc-200">
-                  Tahap 3: Dokumen PRD &amp; Task Pipeline
-                </span>
+              <div>
+                <span className="text-xs font-mono uppercase tracking-wider text-[#ff5c20] font-bold">Tahap 3: Dokumen PRD &amp; Task Pipeline</span>
+                <h2 className="text-xl sm:text-2xl font-bold text-white mt-0.5">{title || 'Dokumen PRD &amp; Task Breakdown'}</h2>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Spesifikasi teknis lengkap dan pipeline task modular siap dieksekusi dengan AI coding agent.
+                </p>
               </div>
 
               {/* Subtabs Switcher & Agent Bridge Button */}

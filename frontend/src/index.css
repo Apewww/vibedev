@@ -219,3 +219,52 @@ body {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
+/* ======================================================== */
+/* PRD GFM TABLE EDITORIAL STYLING                         */
+/* ======================================================== */
+.prd-article table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+  text-align: left;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.prd-article th {
+  background-color: #16161c;
+  color: #ff5c20;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.725rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #27272a;
+  white-space: nowrap;
+}
+
+.prd-article td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid rgba(39, 39, 42, 0.6);
+  color: #d4d4d8;
+  vertical-align: top;
+}
+
+.prd-article tbody tr {
+  transition: background-color 0.15s ease;
+}
+
+.prd-article tbody tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.015);
+}
+
+.prd-article tbody tr:hover {
+  background-color: rgba(255, 92, 32, 0.05);
+}
+
+.prd-article tbody tr:last-child td {
+  border-bottom: none;
+}
+
+

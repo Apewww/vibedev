@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { 
   Box, CheckCircle2, ArrowRight,
   Cpu, Plus, Minus, Maximize2,
@@ -122,65 +122,21 @@ export const FlowMap: React.FC<FlowMapProps> = ({
   const FEAT_X = 420;
   const SUB_X = 820;
   const NODE_W = 260;
+  const SUB_W = 280;
   const ROW_GAP = 185;
+
+  const CARD_H = 136;
+  const CARD_HALF_H = 68;
+  const ROOT_H = 110;
+  const ROOT_HALF_H = 55;
 
   const totalRows = Math.max(features.length, 3);
   const rootCenterY = Math.max(120, (totalRows * ROW_GAP) / 2 - 35);
 
-  // Refs for precise dynamic anchor measurement (eliminates visual line disconnects)
-  const rootRef = useRef<HTMLDivElement>(null);
-  const featRefs = useRef<(HTMLDivElement | null)[]>([]);
-  const subRefs = useRef<(HTMLDivElement | null)[]>([]);
-
-  // State to hold precise vertical anchor positions (Y-centers of connection ports)
-  const [anchors, setAnchors] = useState<{
-    rootY: number;
-    featY: number[];
-    subY: number[];
-  }>(() => ({
-    rootY: rootCenterY + 54,
-    featY: features.map((_, i) => 40 + i * ROW_GAP + 69),
-    subY: features.map((f, i) => 40 + i * ROW_GAP + ((f.subFeatures?.length || 0) <= 2 ? 69 : 69))
-  }));
-
-  // Re-measure exact node handle centers whenever nodes render, font scales, or window resizes
-  const measureAnchors = useCallback(() => {
-    const rootY = rootRef.current
-      ? rootRef.current.offsetTop + rootRef.current.offsetHeight / 2
-      : rootCenterY + 54;
-
-    const featY = features.map((_, i) => {
-      const el = featRefs.current[i];
-      return el ? el.offsetTop + el.offsetHeight / 2 : 40 + i * ROW_GAP + 69;
-    });
-
-    const subY = features.map((_, i) => {
-      const el = subRefs.current[i];
-      if (el) {
-        return el.offsetTop + el.offsetHeight / 2;
-      }
-      return featY[i] ?? (40 + i * ROW_GAP + 69);
-    });
-
-    setAnchors({ rootY, featY, subY });
-  }, [features, rootCenterY, ROW_GAP]);
-
-  useLayoutEffect(() => {
-    measureAnchors();
-  }, [measureAnchors]);
-
-  useEffect(() => {
-    const handleResize = () => measureAnchors();
-    window.addEventListener('resize', handleResize);
-    const ro = new ResizeObserver(() => measureAnchors());
-    if (canvasRef.current) {
-      ro.observe(canvasRef.current);
-    }
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      ro.disconnect();
-    };
-  }, [measureAnchors]);
+  // Exact anchor coordinates computed deterministically (eliminates visual line disconnects)
+  const rootAnchorY = rootCenterY + ROOT_HALF_H;
+  const getFeatAnchorY = (idx: number) => 40 + idx * ROW_GAP + CARD_HALF_H;
+  const getSubAnchorY = (idx: number) => 40 + idx * ROW_GAP + CARD_HALF_H;
 
   return (
     <div className="w-full space-y-3 animate-in fade-in duration-300">
@@ -263,9 +219,9 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                 {/* Edges from Root to Feature Nodes */}
                 {features.map((_feat, idx) => {
                   const x1 = ROOT_X + NODE_W;
-                  const y1 = anchors.rootY;
+                  const y1 = rootAnchorY;
                   const x2 = FEAT_X;
-                  const y2 = anchors.featY[idx] ?? (40 + idx * ROW_GAP + 69);
+                  const y2 = getFeatAnchorY(idx);
 
                   const dx = (x2 - x1) * 0.52;
                   const pathData = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
@@ -302,15 +258,12 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                 {features.map((feat, idx) => {
                   if (!feat.subFeatures || feat.subFeatures.length === 0) return null;
                   const x1 = FEAT_X + NODE_W;
-                  const y1 = anchors.featY[idx] ?? (40 + idx * ROW_GAP + 69);
+                  const y1 = getFeatAnchorY(idx);
                   const x2 = SUB_X;
-                  const y2 = anchors.subY[idx] ?? y1;
+                  const y2 = getSubAnchorY(idx);
 
                   const isHighlighted = selectedNode?.featureIndex === idx;
-                  const dx = (x2 - x1) * 0.5;
-                  const pathData = Math.abs(y1 - y2) < 2
-                    ? `M ${x1} ${y1} L ${x2} ${y2}`
-                    : `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+                  const pathData = `M ${x1} ${y1} L ${x2} ${y2}`;
 
                   return (
                     <g key={`edge-sub-${idx}`}>
@@ -341,15 +294,15 @@ export const FlowMap: React.FC<FlowMapProps> = ({
               {/* NODE 1: PERENCANAAN (Root / PRD Node)                */}
               {/* ---------------------------------------------------- */}
               <div
-                ref={rootRef}
                 onClick={() => setSelectedNode({ type: 'root' })}
                 style={{
                   position: 'absolute',
                   left: `${ROOT_X}px`,
                   top: `${rootCenterY}px`,
-                  width: `${NODE_W}px`
+                  width: `${NODE_W}px`,
+                  height: `${ROOT_H}px`
                 }}
-                className={`interactive-node cursor-pointer rounded-2xl border p-4 bg-[#121215] shadow-xl transition-all duration-200 hover:scale-[1.02] ${
+                className={`interactive-node cursor-pointer rounded-2xl border p-4 bg-[#121215] shadow-xl transition-all duration-200 hover:scale-[1.02] flex flex-col justify-between ${
                   selectedNode?.type === 'root'
                     ? 'border-[#ff5c20] ring-2 ring-[#ff5c20]/30 shadow-[#ff5c20]/15'
                     : 'border-[#27272a] hover:border-zinc-700'
@@ -371,7 +324,7 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                 </div>
 
                 {/* Sub info */}
-                <div className="mt-3 pt-2.5 border-t border-zinc-800/80 flex items-center justify-between text-[11px] text-zinc-400">
+                <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-[11px] text-zinc-400">
                   <span className="flex items-center gap-1">
                     <Sparkles className="w-3 h-3 text-[#ff5c20]" />
                     <span>{features.length} Modul Fitur</span>
@@ -382,9 +335,9 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                 </div>
 
                 {/* Connection Output Handle Dot */}
-                <div className={`absolute -right-1.5 top-1/2 -translate-y-1/2 size-3.5 rounded-full border-2 border-[#121215] z-10 transition-all ${
+                <div className={`absolute -right-2 top-1/2 -translate-y-1/2 size-4 rounded-full border-2 border-[#121215] z-20 pointer-events-none transition-all ${
                   selectedNode?.type === 'root'
-                    ? 'bg-[#ff5c20] ring-2 ring-[#ff5c20]/50 scale-110 shadow-md shadow-[#ff5c20]'
+                    ? 'bg-[#ff5c20] ring-4 ring-[#ff5c20]/40 scale-110 shadow-lg shadow-[#ff5c20]'
                     : 'bg-[#ff5c20] shadow-sm shadow-[#ff5c20]/60'
                 }`} />
               </div>
@@ -401,55 +354,57 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                 return (
                   <div
                     key={`feat-node-${feat.id || idx}`}
-                    ref={el => { featRefs.current[idx] = el; }}
                     onClick={() => setSelectedNode({ type: 'feature', featureIndex: idx })}
                     style={{
                       position: 'absolute',
                       left: `${FEAT_X}px`,
                       top: `${topPos}px`,
-                      width: `${NODE_W}px`
+                      width: `${NODE_W}px`,
+                      height: `${CARD_H}px`
                     }}
-                    className={`interactive-node cursor-pointer rounded-2xl border p-3.5 bg-[#121215] shadow-lg transition-all duration-200 hover:scale-[1.02] ${
+                    className={`interactive-node cursor-pointer rounded-2xl border p-3.5 bg-[#121215] shadow-lg transition-all duration-200 hover:scale-[1.02] flex flex-col justify-between ${
                       isSelected
                         ? 'border-[#ff5c20] ring-2 ring-[#ff5c20]/30 shadow-[#ff5c20]/15'
                         : 'border-[#27272a] hover:border-zinc-700'
                     }`}
                   >
                     {/* Input Connection Handle Dot */}
-                    <div className={`absolute -left-1.5 top-1/2 -translate-y-1/2 size-3.5 rounded-full border-2 border-[#121215] z-10 transition-all ${
+                    <div className={`absolute -left-2 top-1/2 -translate-y-1/2 size-4 rounded-full border-2 border-[#121215] z-20 pointer-events-none transition-all ${
                       isSelected
-                        ? 'bg-[#ff5c20] ring-2 ring-[#ff5c20]/60 scale-110 shadow-md shadow-[#ff5c20]'
+                        ? 'bg-[#ff5c20] ring-4 ring-[#ff5c20]/40 scale-110 shadow-lg shadow-[#ff5c20]'
                         : 'bg-[#ff5c20] shadow-sm shadow-[#ff5c20]/40'
                     }`} />
 
-                    {/* Top Phase Tag */}
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-[#ff5c20] font-semibold">
-                        Modul {idx + 1}
-                      </span>
-                      <span className="text-[9px] font-mono uppercase px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700/60 font-semibold">
-                        {feat.priority || 'HIGH'}
-                      </span>
-                    </div>
-
-                    {/* Module Title */}
-                    <div className="flex items-center gap-2">
-                      <div className="size-6 rounded-lg bg-zinc-800/80 flex items-center justify-center text-zinc-300 shrink-0">
-                        <IconComponent className="w-3.5 h-3.5 text-[#ff5c20]" />
+                    <div>
+                      {/* Top Phase Tag */}
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-[#ff5c20] font-semibold">
+                          Modul {idx + 1}
+                        </span>
+                        <span className="text-[9px] font-mono uppercase px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700/60 font-semibold">
+                          {feat.priority || 'HIGH'}
+                        </span>
                       </div>
-                      <h4 className="text-xs sm:text-sm font-bold text-white truncate flex-1" title={feat.name}>
-                        {feat.name}
-                      </h4>
-                      <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
-                    </div>
 
-                    {/* Module 1-line Summary */}
-                    <p className="text-[11px] text-zinc-400 mt-2 line-clamp-1 leading-normal">
-                      {feat.summary}
-                    </p>
+                      {/* Module Title */}
+                      <div className="flex items-center gap-2">
+                        <div className="size-6 rounded-lg bg-zinc-800/80 flex items-center justify-center text-zinc-300 shrink-0">
+                          <IconComponent className="w-3.5 h-3.5 text-[#ff5c20]" />
+                        </div>
+                        <h4 className="text-xs sm:text-sm font-bold text-white truncate flex-1" title={feat.name}>
+                          {feat.name}
+                        </h4>
+                        <ChevronRight className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                      </div>
+
+                      {/* Module 1-line Summary */}
+                      <p className="text-[11px] text-zinc-400 mt-1.5 line-clamp-1 leading-normal">
+                        {feat.summary}
+                      </p>
+                    </div>
 
                     {/* Sub-feature stats pill */}
-                    <div className="mt-2.5 pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[10px] text-zinc-500">
+                    <div className="pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[10px] text-zinc-500">
                       <span className="flex items-center gap-1 font-mono text-zinc-400">
                         <CheckCircle2 className="w-3 h-3 text-[#ff5c20]" />
                         <span>{subCount} sub-fitur</span>
@@ -459,9 +414,9 @@ export const FlowMap: React.FC<FlowMapProps> = ({
 
                     {/* Output Connection Handle Dot */}
                     {subCount > 0 && (
-                      <div className={`absolute -right-1.5 top-1/2 -translate-y-1/2 size-3.5 rounded-full border-2 border-[#121215] z-10 transition-all ${
+                      <div className={`absolute -right-2 top-1/2 -translate-y-1/2 size-4 rounded-full border-2 border-[#121215] z-20 pointer-events-none transition-all ${
                         isSelected
-                          ? 'bg-[#ff5c20] ring-2 ring-[#ff5c20]/60 scale-110 shadow-md shadow-[#ff5c20]'
+                          ? 'bg-[#ff5c20] ring-4 ring-[#ff5c20]/40 scale-110 shadow-lg shadow-[#ff5c20]'
                           : 'bg-[#ff5c20] shadow-sm shadow-[#ff5c20]/40'
                       }`} />
                     )}
@@ -480,14 +435,13 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                 return (
                   <div
                     key={`sub-node-${feat.id || idx}`}
-                    ref={el => { subRefs.current[idx] = el; }}
                     onClick={() => setSelectedNode({ type: 'feature', featureIndex: idx })}
                     style={{
                       position: 'absolute',
                       left: `${SUB_X}px`,
                       top: `${topPos}px`,
-                      width: '280px',
-                      minHeight: '138px'
+                      width: `${SUB_W}px`,
+                      height: `${CARD_H}px`
                     }}
                     className={`interactive-node cursor-pointer rounded-2xl border p-3.5 bg-[#16161a] shadow-md transition-all duration-200 hover:scale-[1.01] flex flex-col justify-between ${
                       isSelected
@@ -496,9 +450,9 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                     }`}
                   >
                     {/* Input Connection Handle Dot */}
-                    <div className={`absolute -left-1.5 top-1/2 -translate-y-1/2 size-3.5 rounded-full border-2 border-[#16161a] z-10 transition-all ${
+                    <div className={`absolute -left-2 top-1/2 -translate-y-1/2 size-4 rounded-full border-2 border-[#16161a] z-20 pointer-events-none transition-all ${
                       isSelected
-                        ? 'bg-[#ff5c20] ring-2 ring-[#ff5c20]/60 scale-110 shadow-md shadow-[#ff5c20]'
+                        ? 'bg-[#ff5c20] ring-4 ring-[#ff5c20]/40 scale-110 shadow-lg shadow-[#ff5c20]'
                         : 'bg-[#ff5c20] shadow-sm shadow-[#ff5c20]/40'
                     }`} />
 

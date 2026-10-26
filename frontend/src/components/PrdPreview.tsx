@@ -120,9 +120,30 @@ function normalizeTextChunk(chunk: string): string {
   text = text.replace(/\|\s*\|\s*([^\s|])/g, '|\n| $1');
   text = text.replace(/\|\s*\|\s*--/g, '|\n|--');
 
-  // Ensure tables are separated from text by newlines
-  text = text.replace(/([^\n])\n(\|.+?\|)/g, '$1\n\n$2');
-  text = text.replace(/(\|.+?\|)\n([^\n|])/g, '$1\n\n$2');
+  // 1. Separate table from preceding non-table text with a blank line (preceding line must NOT be a table row)
+  text = text.replace(/([^\n|])\n([ \t]*\|.+?\|)/g, '$1\n\n$2');
+
+  // 2. Separate table from following non-table text with a blank line
+  text = text.replace(/(\|[^\n]+?\|)\n([^\n|])/g, '$1\n\n$2');
+
+  // 3. Remove any blank lines inside table rows (a blank line breaks GFM table spec)
+  text = text.replace(/(\|[^\n]+?\|)\n\s*\n+(\s*\|)/g, '$1\n$2');
+
+  // 4. Auto-wrap unpiped table delimiter rows like "---|---|---" with outer pipes "|---|---|---|"
+  text = text.replace(/^(\s*)(:?-+:?\s*\|\s*:?-+:?.*)$/gm, (_match, prefix, row) => {
+    let clean = row.trim();
+    if (!clean.startsWith('|')) clean = '| ' + clean;
+    if (!clean.endsWith('|')) clean = clean + ' |';
+    return prefix + clean;
+  });
+
+  // 5. If a header row precedes a delimiter row and lacks outer pipes, add them
+  text = text.replace(/^([^\n|]+?\|[^\n|]+?)\n(\s*\|(?:\s*:?-+:?\s*\|)+)/gm, (_match, header, delimiter) => {
+    let cleanHeader = header.trim();
+    if (!cleanHeader.startsWith('|')) cleanHeader = '| ' + cleanHeader;
+    if (!cleanHeader.endsWith('|')) cleanHeader = cleanHeader + ' |';
+    return cleanHeader + '\n' + delimiter;
+  });
 
   // Unclump bullet points: "...teks. - **Poin**..." -> "...teks.\n- **Poin**..."
   text = text.replace(/([^\n])\s+-\s+(\*\*|\*|`|[A-Za-z0-9])/g, '$1\n- $2');

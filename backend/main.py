@@ -394,15 +394,16 @@ Kembalikan HANYA format JSON valid berikut:
 Gunakan Bahasa Indonesia.
 """
 
-    content = call_llm([{"role": "user", "content": prompt}], response_json=True)
     q_list = []
     try:
+        content = call_llm([{"role": "user", "content": prompt}], response_json=True)
         data = json.loads(content)
         q_list = data.get("questions", [])
-    except Exception:
+    except Exception as err:
+        print(f"Error calling LLM for clarifying questions, falling back to default: {err}")
         q_list = DEFAULT_CLARIFYING_QUESTIONS
     
-    if not q_list:
+    if not q_list or not isinstance(q_list, list):
         q_list = DEFAULT_CLARIFYING_QUESTIONS
 
     plan["questions"] = q_list
