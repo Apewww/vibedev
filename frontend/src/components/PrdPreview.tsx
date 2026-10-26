@@ -97,9 +97,32 @@ function normalizeTextChunk(chunk: string): string {
   // "2.1.1 Sub-item" -> "#### $1 $2"
   text = text.replace(/^(?<!#\s*)(\d+\.\d+\.\d+)\.?\s+([A-Za-z].+)$/gm, '#### $1 $2');
 
+  // Ensure double newlines around markdown headings so they are never glued to paragraphs
+  text = text.replace(/([^\n])\n(#{1,4}\s+[^\n]+)/g, '$1\n\n$2');
+  text = text.replace(/(#{1,4}\s+[^\n]+)\n([^\n#])/g, '$1\n\n$2');
+
+  // Format executive highlights with double line breaks and clean bolding:
+  // "Ringkasan Eksekutif: ..." -> "\n\n**Ringkasan Eksekutif**: ..."
+  text = text.replace(/^([ \t]*)(Ringkasan Eksekutif|Latar Belakang Masalah|Nilai Proposisi|Tujuan Utama|Target Pengguna|Solusi Inti|Metrik Keberhasilan):\s*/gim, '\n\n**$2**: ');
+
+  // Under "Tujuan Utama", convert unbulleted sentences into clean bullet points
+  text = text.replace(/(\*\*Tujuan Utama\*\*:\s*\n)((?:[^\n-*\s][^\n]+\n?)+)/gi, (_match, header, items) => {
+    const bullets = items
+      .split('\n')
+      .map((line: string) => line.trim())
+      .filter((line: string) => line.length > 0 && !line.startsWith('-') && !line.startsWith('*'))
+      .map((line: string) => `- ${line}`)
+      .join('\n');
+    return `${header}${bullets}\n\n`;
+  });
+
   // Fix clumped table rows: "col | | col" -> "col |\n| col" or "col | |---|..." -> "col |\n|---|..."
   text = text.replace(/\|\s*\|\s*([^\s|])/g, '|\n| $1');
   text = text.replace(/\|\s*\|\s*--/g, '|\n|--');
+
+  // Ensure tables are separated from text by newlines
+  text = text.replace(/([^\n])\n(\|.+?\|)/g, '$1\n\n$2');
+  text = text.replace(/(\|.+?\|)\n([^\n|])/g, '$1\n\n$2');
 
   // Unclump bullet points: "...teks. - **Poin**..." -> "...teks.\n- **Poin**..."
   text = text.replace(/([^\n])\s+-\s+(\*\*|\*|`|[A-Za-z0-9])/g, '$1\n- $2');
@@ -170,7 +193,7 @@ function tryConvertAsciiToMermaid(code: string): string | null {
     }
 
     return mermaid.join('\n');
-  } catch (err) {
+  } catch (_err) {
     return null;
   }
 }
@@ -294,25 +317,91 @@ function renderMarkdownWithIds(mdText: string, startIndex: { current: number }):
   // 1. Let marked parse pure Markdown with full GFM support
   let html = marked.parse(mdText, { gfm: true, breaks: true }) as string;
 
-  // 2. Post-process headings in rendered HTML to add deterministic anchor IDs for outline navigation
-  html = html.replace(/<(h[1-6])([^>]*)>(.*?)<\/\1>/gi, (_match, tag, attrs, content) => {
-    const level = parseInt(tag.charAt(1), 10);
-    const textContent = content.replace(/<[^>]+>/g, '').trim();
-
-    // Skip main document title from outline anchor index
-    if (level === 1 && textContent.toLowerCase().includes('prd')) {
-      return `<${tag}${attrs}>${content}</${tag}>`;
-    }
-
-    const id = `prd-sec-${startIndex.current}`;
-    startIndex.current++;
-    return `<${tag} id="${id}"${attrs}>${content}</${tag}>`;
+  // 2. Process Document Main Title
+  html = html.replace(/<h1[^>]*>(.*?)<\/h1>/gi, (_match, content) => {
+    const rawTitle = content.replace(/<[^>]+>/g, '').trim();
+    const cleanTitle = rawTitle.replace(/^PRD\s+[—–-]\s*/i, '');
+    return `
+      <div class="mb-12 pb-7 border-b border-zinc-800/90">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#ff5c20]/10 border border-[#ff5c20]/30 text-[#ff5c20] text-xs font-mono font-bold uppercase tracking-wider mb-3.5">
+          <span class="size-2 rounded-full bg-[#ff5c20] animate-pulse"></span>
+          <span>Spesifikasi Produk Resmi</span>
+        </div>
+        <h1 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight leading-tight mb-3">
+          ${cleanTitle || rawTitle}
+        </h1>
+        <p class="text-xs sm:text-sm text-zinc-400 font-normal leading-relaxed max-w-3xl">
+          Dokumen Spesifikasi Teknis, Arsitektur Sistem, Matriks Kebutuhan Fungsional, dan Panduan Eksekusi AI Coding Agent.
+        </p>
+      </div>
+    `;
   });
 
-  // 3. Wrap all <table> elements in responsive styled containers (consume full opening tag to prevent stray '>')
+  // 3. Post-process Level 2 Headings (## 1. Overview etc.)
+  html = html.replace(/<h2([^>]*)>(.*?)<\/h2>/gi, (_match, attrs, content) => {
+    const id = `prd-sec-${startIndex.current}`;
+    startIndex.current++;
+    const textContent = content.replace(/<[^>]+>/g, '').trim();
+
+    // Match e.g. "1. Overview" -> num: "01", title: "Overview"
+    const numMatch = textContent.match(/^(\d+)\.\s*(.+)$/);
+    if (numMatch) {
+      const num = numMatch[1].padStart(2, '0');
+      const title = numMatch[2];
+      return `
+        <h2 id="${id}"${attrs} class="group flex items-center gap-3 border-b border-zinc-800 pb-3 mt-14 mb-6 text-white text-xl sm:text-2xl font-bold tracking-tight">
+          <span class="inline-flex items-center justify-center size-8 rounded-xl bg-[#ff5c20]/15 text-[#ff5c20] text-xs font-mono font-bold border border-[#ff5c20]/30 shrink-0 shadow-sm shadow-[#ff5c20]/20">
+            ${num}
+          </span>
+          <span class="flex-1">${title}</span>
+        </h2>
+      `;
+    }
+
+    return `<h2 id="${id}"${attrs} class="border-b border-zinc-800 pb-3 mt-14 mb-6 text-white text-xl sm:text-2xl font-bold tracking-tight">${content}</h2>`;
+  });
+
+  // 4. Post-process Level 3 Headings (### 2.1 Kebutuhan Fungsional etc.)
+  html = html.replace(/<h3([^>]*)>(.*?)<\/h3>/gi, (_match, attrs, content) => {
+    const id = `prd-sec-${startIndex.current}`;
+    startIndex.current++;
+    const textContent = content.replace(/<[^>]+>/g, '').trim();
+
+    const subMatch = textContent.match(/^(\d+\.\d+)\.?\s*(.+)$/);
+    if (subMatch) {
+      const subNum = subMatch[1];
+      const subTitle = subMatch[2];
+      return `
+        <h3 id="${id}"${attrs} class="flex items-center gap-2.5 mt-9 mb-4 text-[#ff7a45] text-base sm:text-lg font-bold tracking-tight">
+          <span class="inline-flex items-center px-2 py-0.5 rounded-md bg-zinc-800/90 text-zinc-300 text-[11px] font-mono border border-zinc-700/60 shrink-0 font-semibold">
+            ${subNum}
+          </span>
+          <span>${subTitle}</span>
+        </h3>
+      `;
+    }
+
+    return `<h3 id="${id}"${attrs} class="mt-9 mb-4 text-[#ff7a45] text-base sm:text-lg font-bold tracking-tight">${content}</h3>`;
+  });
+
+  // 5. Wrap all <table> elements in responsive styled containers
   html = html
     .replace(/<table[^>]*>/gi, '<div class="table-container my-8 overflow-x-auto rounded-2xl border border-zinc-800 bg-[#121217] shadow-xl"><table class="w-full border-collapse my-0 text-left text-xs sm:text-[13px] leading-relaxed text-zinc-300">')
     .replace(/<\/table>/g, '</table></div>');
+
+  // 6. Format Priority Badges in table cells
+  html = html.replace(/<td>\s*High\s*<\/td>/gi, '<td><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">High</span></td>');
+  html = html.replace(/<td>\s*Medium\s*<\/td>/gi, '<td><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">Medium</span></td>');
+  html = html.replace(/<td>\s*Low\s*<\/td>/gi, '<td><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30">Low</span></td>');
+
+  // 7. Format HTTP methods in tables
+  html = html.replace(/<td>\s*(?:<code>)?\s*GET\s*(?:<\/code>)?\s*<\/td>/gi, '<td><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">GET</span></td>');
+  html = html.replace(/<td>\s*(?:<code>)?\s*POST\s*(?:<\/code>)?\s*<\/td>/gi, '<td><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/15 text-blue-400 border border-blue-500/30">POST</span></td>');
+  html = html.replace(/<td>\s*(?:<code>)?\s*PUT\s*(?:<\/code>)?\s*<\/td>/gi, '<td><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">PUT</span></td>');
+  html = html.replace(/<td>\s*(?:<code>)?\s*DELETE\s*(?:<\/code>)?\s*<\/td>/gi, '<td><span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">DELETE</span></td>');
+
+  // 8. Format FR codes like FR-001
+  html = html.replace(/<td>\s*(FR-\d+)\s*<\/td>/gi, '<td><span class="font-mono text-[#ff7a45] font-semibold">$1</span></td>');
 
   return html;
 }
@@ -519,14 +608,45 @@ export const PrdPreview: React.FC<PrdPreviewProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  // Scroll to section smoothly
+  // Scroll to section smoothly with 90px offset to avoid sticky header collision
   const scrollToHeading = (id: string) => {
     const el = document.getElementById(id);
     if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const topOffset = 90;
+      const elementPosition = el.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - topOffset;
+      window.scrollTo({
+        top: Math.max(0, offsetPosition),
+        behavior: 'smooth'
+      });
       setActiveHeading(id);
     }
   };
+
+  // Scroll spy to highlight active outline section automatically
+  useEffect(() => {
+    if (outline.length === 0) return;
+
+    const handleScroll = () => {
+      const headings = outline
+        .map(item => ({ id: item.id, el: document.getElementById(item.id) }))
+        .filter(item => item.el !== null) as { id: string; el: HTMLElement }[];
+
+      const scrollPos = window.scrollY + 130;
+
+      for (let i = headings.length - 1; i >= 0; i--) {
+        const h = headings[i];
+        if (h.el.offsetTop <= scrollPos) {
+          setActiveHeading(h.id);
+          break;
+        }
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [outline]);
 
   // Submit revision
   const handleSendRevision = (e: React.FormEvent) => {
@@ -537,9 +657,29 @@ export const PrdPreview: React.FC<PrdPreviewProps> = ({
     setRevisionPrompt('');
   };
 
-  // Counter tracker for assigning IDs to headings across markdown chunks
-  const headingIdTracker = useRef(0);
-  headingIdTracker.current = 0;
+  // Memoize rendered HTML chunks with deterministic heading IDs across chunks
+  const renderedChunks = useMemo(() => {
+    const list: (
+      | { type: 'mermaid'; content: string; key: string }
+      | { type: 'markdown'; html: string; key: string }
+    )[] = [];
+    let counter = 0;
+
+    for (let idx = 0; idx < chunks.length; idx++) {
+      const chunk = chunks[idx];
+      if (chunk.type === 'mermaid') {
+        list.push({ type: 'mermaid', content: chunk.content, key: `mermaid-${idx}` });
+      } else {
+        const startIndex = { current: counter };
+        const htmlContent = renderMarkdownWithIds(chunk.content, startIndex);
+        counter = startIndex.current;
+        list.push({ type: 'markdown', html: htmlContent, key: `md-${idx}` });
+      }
+    }
+
+    return list;
+  }, [chunks]);
+
 
   return (
     <div className="w-full space-y-6">
@@ -590,53 +730,95 @@ export const PrdPreview: React.FC<PrdPreviewProps> = ({
       </div>
 
       {/* Main 2-Column Document Layout (Sticky Outline Sidebar on Left + Content on Right) */}
-      <div className={`grid grid-cols-1 ${outline.length > 0 ? 'lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[290px_minmax(0,1fr)]' : ''} gap-8 items-start`}>
+      <div className={`grid grid-cols-1 ${outline.length > 0 ? 'lg:grid-cols-[270px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)]' : ''} gap-8 items-start`}>
         {/* Left: Sticky DAFTAR ISI (OUTLINE) Sidebar */}
         {outline.length > 0 && (
           <aside className="hidden lg:block sticky top-20 self-start">
-            <div className="p-4 rounded-2xl border border-zinc-800/80 bg-[#121217]/90 backdrop-blur-md shadow-xl">
-              <div className="border-b border-zinc-800 pb-3 mb-3">
-                <span className="text-[10px] font-mono uppercase tracking-widest text-[#ff5c20] font-bold flex items-center gap-1.5">
-                  <Bookmark className="w-3 h-3 text-[#ff5c20]" />
-                  <span>DAFTAR ISI</span>
+            <div className="p-4 rounded-2xl border border-zinc-800/90 bg-[#121217]/95 backdrop-blur-md shadow-xl flex flex-col gap-3">
+              {/* Sidebar Header */}
+              <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="flex size-6 items-center justify-center rounded-lg bg-[#ff5c20]/15 text-[#ff5c20]">
+                    <Bookmark className="w-3.5 h-3.5" />
+                  </span>
+                  <span className="text-[11px] font-mono uppercase tracking-widest text-[#ff5c20] font-bold">
+                    DAFTAR ISI
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono text-zinc-400 px-2 py-0.5 rounded bg-zinc-800/80 border border-zinc-700/50">
+                  {outline.length} bagian
                 </span>
-                <h4 className="text-xs font-bold text-white truncate mt-1" title={title}>
+              </div>
+
+              {/* Document Subtitle */}
+              <div className="px-1">
+                <h4 className="text-xs font-bold text-white truncate" title={title}>
                   {title || 'Dokumen PRD'}
                 </h4>
+                <span className="text-[10px] text-zinc-500 font-mono block mt-0.5">
+                  Navigasi Struktur &amp; Arsitektur
+                </span>
               </div>
 
               {/* Vertical Rail Navigation */}
-              <nav className="relative border-l-2 border-zinc-800/70 pl-3.5 space-y-1 max-h-[calc(100vh-220px)] overflow-y-auto pr-1">
+              <nav className="relative border-l border-zinc-800/80 pl-2.5 space-y-1 max-h-[calc(100vh-260px)] overflow-y-auto pr-1">
                 {outline.map((item) => {
                   const isActive = activeHeading === item.id;
                   const isLevel2 = item.level === 1 || item.level === 2;
+
+                  // Parse numbering if available, e.g. "1. Overview" -> num: "1", label: "Overview"
+                  const numMatch = item.text.match(/^(\d+(?:\.\d+)?)\.?\s*(.+)$/);
+                  const numberPart = numMatch ? numMatch[1] : null;
+                  const textPart = numMatch ? numMatch[2] : item.text;
 
                   return (
                     <button
                       key={item.id}
                       type="button"
                       onClick={() => scrollToHeading(item.id)}
-                      className={`group relative flex w-full items-center text-left transition-all cursor-pointer ${
+                      className={`group relative flex w-full items-center text-left transition-all rounded-lg cursor-pointer ${
                         isLevel2
-                          ? 'text-xs font-semibold py-1.5'
-                          : 'text-[11.5px] py-1 pl-2.5 font-normal'
+                          ? 'text-xs font-semibold py-1.5 px-2'
+                          : 'text-[11px] py-1 px-2 ml-1.5 font-normal'
                       } ${
                         isActive
-                          ? 'text-[#ff5c20] font-bold'
+                          ? 'bg-[#ff5c20]/15 text-[#ff5c20] font-bold shadow-sm'
                           : isLevel2
-                          ? 'text-zinc-300 hover:text-white'
-                          : 'text-zinc-400 hover:text-zinc-200'
+                          ? 'text-zinc-300 hover:text-white hover:bg-zinc-800/50'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/30'
                       }`}
+                      title={item.text}
                     >
-                      {/* Active Indicator on the Vertical Rail */}
+                      {/* Active Accent Bar on Rail */}
                       {isActive && (
-                        <span className="absolute -left-[16px] top-1/2 -translate-y-1/2 w-1 h-4 bg-[#ff5c20] rounded-r-full shadow-sm shadow-[#ff5c20]/50" />
+                        <span className="absolute -left-[11px] top-1/2 -translate-y-1/2 w-1 h-4 bg-[#ff5c20] rounded-r-full shadow-sm shadow-[#ff5c20]/60" />
                       )}
-                      <span className="truncate leading-snug">{item.text}</span>
+
+                      {numberPart ? (
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span className={`font-mono text-[10px] shrink-0 ${isActive ? 'text-[#ff5c20] font-bold' : 'text-zinc-500'}`}>
+                            {numberPart}
+                          </span>
+                          <span className="truncate leading-snug">{textPart}</span>
+                        </span>
+                      ) : (
+                        <span className="truncate leading-snug">{item.text}</span>
+                      )}
                     </button>
                   );
                 })}
               </nav>
+
+              {/* Back to top quick link */}
+              <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between text-[10px]">
+                <button
+                  type="button"
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                  className="text-zinc-400 hover:text-[#ff5c20] transition-colors cursor-pointer flex items-center gap-1 font-mono"
+                >
+                  <span>&uarr; Ke Atas Dokumen</span>
+                </button>
+              </div>
             </div>
           </aside>
         )}
@@ -644,17 +826,15 @@ export const PrdPreview: React.FC<PrdPreviewProps> = ({
         {/* Right: Rendered Document Body with Editorial Line Spacing */}
         <div className="min-w-0 space-y-4">
           <div className="p-8 sm:p-12 lg:p-14 rounded-3xl border border-zinc-800/80 bg-[#101014] shadow-2xl">
-            {chunks.map((chunk, idx) => {
+            {renderedChunks.map((chunk) => {
               if (chunk.type === 'mermaid') {
-                return <MermaidCard key={`mermaid-${idx}`} code={chunk.content} />;
+                return <MermaidCard key={chunk.key} code={chunk.content} />;
               }
-
-              const htmlContent = renderMarkdownWithIds(chunk.content, headingIdTracker);
 
               return (
                 <div
-                  key={`md-${idx}`}
-                  className="prose prose-invert prose-zinc max-w-none text-zinc-300 text-[14px] sm:text-[15px] leading-[1.85]
+                  key={chunk.key}
+                  className="prd-article prose prose-invert prose-zinc max-w-none text-zinc-300 text-[14.5px] sm:text-[15px] leading-[1.85]
                     prose-headings:text-white prose-headings:font-bold prose-headings:tracking-tight
                     prose-h1:text-2xl sm:prose-h1:text-3xl prose-h1:font-extrabold prose-h1:border-b prose-h1:border-zinc-800 prose-h1:pb-4 prose-h1:mt-2 prose-h1:mb-8
                     prose-h2:text-xl sm:prose-h2:text-2xl prose-h2:border-b prose-h2:border-zinc-800/80 prose-h2:pb-3 prose-h2:mt-14 prose-h2:mb-6 prose-h2:text-white
@@ -670,13 +850,14 @@ export const PrdPreview: React.FC<PrdPreviewProps> = ({
                     [&_table]:w-full [&_table]:border-collapse [&_table]:my-0
                     [&_thead]:bg-[#181820] [&_th]:border-b [&_th]:border-zinc-800 [&_th]:px-5 [&_th]:py-3.5 [&_th]:text-left [&_th]:text-xs [&_th]:font-bold [&_th]:text-white [&_th]:uppercase [&_th]:tracking-wider
                     [&_td]:border-b [&_td]:border-zinc-800/60 [&_td]:px-5 [&_td]:py-3.5 [&_td]:text-xs sm:[&_td]:text-[13px] [&_td]:leading-relaxed [&_td]:text-zinc-300 [&_tr:last-child_td]:border-b-0 [&_tr:nth-child(even)]:bg-[#15151c] [&_tr:hover]:bg-zinc-800/40"
-                  dangerouslySetInnerHTML={{ __html: htmlContent }}
+                  dangerouslySetInnerHTML={{ __html: chunk.html }}
                 />
               );
             })}
           </div>
         </div>
       </div>
+
 
       {/* Revision Modal Dialog */}
       {showRevisionModal && (

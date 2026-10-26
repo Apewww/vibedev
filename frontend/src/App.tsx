@@ -3,7 +3,8 @@ import {
   ArrowRight, ArrowLeft, RefreshCw, 
   Menu, Sparkles, Terminal, FileText, Cpu, 
   Layers, Box,
-  User as UserIcon, X, ShieldAlert
+  User as UserIcon, X, ShieldAlert,
+  Copy, Check, Link as LinkIcon
 } from 'lucide-react';
 
 import { VibeJourney } from './components/VibeJourney';
@@ -70,6 +71,7 @@ export default function App() {
   const [showAgentPrompt, setShowAgentPrompt] = useState<boolean>(false);
   const [showAuthModal, setShowAuthModal] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
 
   const getAuthHeaders = (): Record<string, string> => {
     const token = localStorage.getItem('vibedev_session_token');
@@ -82,28 +84,19 @@ export default function App() {
     return headers;
   };
 
-  // Initial Data Fetching
-  useEffect(() => {
-    // 0. Handle OAuth redirect session_token param in URL if returned from Google
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const token = params.get('session_token');
-      if (token) {
-        document.cookie = `better-auth.session_token=${token}; path=/; max-age=${30 * 86400}; SameSite=Lax`;
-        localStorage.setItem('vibedev_session_token', token);
-        const newUrl = window.location.pathname + (window.location.hash || '');
-        window.history.replaceState({}, document.title, newUrl);
-      }
-    } catch (e) {
-      console.error('Error handling session token from URL:', e);
-    }
+  // Helper to extract plan ID from pathname: /project/:id or /p/:id
+  const getPlanIdFromPath = (pathname: string): string | null => {
+    const match = pathname.match(/^\/(?:project|p)\/([a-zA-Z0-9_-]+)/i);
+    return match ? match[1] : null;
+  };
 
-    // 1. Fetch User Session & Credits
-    fetchSessionAndCredits();
-
-    // 2. Fetch Saved Plans History
-    fetchSavedPlans();
-  }, []);
+  const handleCopyProjectUrl = () => {
+    if (!planId) return;
+    const url = `${window.location.origin}/project/${planId}`;
+    navigator.clipboard.writeText(url);
+    setCopiedUrl(true);
+    setTimeout(() => setCopiedUrl(false), 2000);
+  };
 
   const fetchSessionAndCredits = async () => {
     try {
@@ -141,49 +134,6 @@ export default function App() {
       console.error('Error fetching plans:', e);
     }
   };
-
-  // Realtime Telemetry Hook: Live sync task changes via SSE & polling when viewing Step 3
-  useEffect(() => {
-    if (step !== 3 || !planId) return;
-
-    let eventSource: EventSource | null = null;
-    let isCancelled = false;
-
-    // 1. Instant Push via Server-Sent Events (SSE)
-    try {
-      eventSource = new EventSource(`/api/plan/${planId}/events`);
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          if (data && data.type === 'tasks_updated' && Array.isArray(data.tasks)) {
-            setTasks(data.tasks);
-          }
-        } catch (e) {}
-      };
-    } catch (e) {
-      console.warn('SSE connection failed, falling back to polling:', e);
-    }
-
-    // 2. High-reliability polling (every 2.5s) to guarantee zero desync
-    const pollInterval = setInterval(async () => {
-      if (isCancelled) return;
-      try {
-        const res = await fetch(`/api/plan/${planId}/tasks`);
-        if (res.ok) {
-          const d = await res.json();
-          if (d && Array.isArray(d.tasks)) {
-            setTasks(d.tasks);
-          }
-        }
-      } catch (err) {}
-    }, 2500);
-
-    return () => {
-      isCancelled = true;
-      if (eventSource) eventSource.close();
-      clearInterval(pollInterval);
-    };
-  }, [step, planId]);
 
   const handleGoogleLogin = async () => {
     try {
@@ -223,7 +173,7 @@ export default function App() {
   };
 
   // Reset to New Project
-  const handleNewProject = () => {
+  const handleNewProject = (pushHistory = true) => {
     setPlanId('');
     setTitle('');
     setIdea('');
@@ -235,50 +185,9 @@ export default function App() {
     setStep(1);
     setMaxStepReached(1);
     setErrorMessage('');
-  };
 
-  // Select an existing plan from sidebar
-  const handleSelectPlan = async (plan: SavedPlan) => {
-    try {
-      const res = await fetch(`/api/plan/${plan.planId || plan.id}`);
-      const data = await res.json();
-      const p = data.plan || plan;
-
-      setPlanId(p.planId || p.id);
-      setTitle(p.title || '');
-      setIdea(p.idea || '');
-      setAnswers(p.questionAnswers || {});
-      setPrdMarkdown(p.generatedPrd || '');
-
-      // Load features
-      const rawFeats: any[] = p.features || [];
-      const rawSubs: any[] = p.subFeatures || [];
-      if (rawFeats.length > 0) {
-        setFeatures(rawFeats.map(f => ({
-          ...f,
-          subFeatures: rawSubs.filter(s => s.featureId === f.id)
-        })));
-      } else {
-        setFeatures([]);
-      }
-
-      // Load tasks
-      setTasks(p.tasks || []);
-
-      // Determine step
-      if (p.generatedPrd || (p.tasks && p.tasks.length > 0)) {
-        setStep(3);
-        setMaxStepReached(3);
-      } else if (rawFeats.length > 0) {
-        setStep(2);
-        setMaxStepReached(2);
-      } else {
-        setStep(1);
-        setMaxStepReached(1);
-        loadQuestionsForPlan(p.planId || p.id);
-      }
-    } catch (e) {
-      console.error('Failed to load plan:', e);
+    if (pushHistory && window.location.pathname !== '/') {
+      window.history.pushState({}, '', '/');
     }
   };
 
@@ -295,13 +204,189 @@ export default function App() {
         return;
       }
       const qData = await qRes.json();
-      setQuestions(qData.questions || []);
+      if (qData.questions && qData.questions.length > 0) {
+        setQuestions(qData.questions);
+      }
     } catch (e) {
       console.error(e);
     } finally {
       setLoadingQuestions(false);
     }
   };
+
+  // Comprehensive Plan Loader by ID (restoring all steps from Ide & Kuis through PRD + Tasks)
+  const loadPlanById = async (id: string, pushHistory = true) => {
+    try {
+      setErrorMessage('');
+      const res = await fetch(`/api/plan/${id}`, { headers: getAuthHeaders() });
+      if (!res.ok) {
+        if (res.status === 404) {
+          console.warn(`Project ${id} not found.`);
+          handleNewProject(true);
+          return;
+        }
+        throw new Error(`Failed to load plan: ${res.statusText}`);
+      }
+      const data = await res.json();
+      const p = data.plan;
+      if (!p) return;
+
+      const currentId = p.planId || p.id || id;
+      setPlanId(currentId);
+      setTitle(p.title || '');
+      setIdea(p.idea || '');
+      setAnswers(p.questionAnswers || {});
+      setPrdMarkdown(p.generatedPrd || '');
+
+      // 1. Restore Questions for Step 1 review
+      if (p.questions && Array.isArray(p.questions) && p.questions.length > 0) {
+        setQuestions(p.questions);
+      } else {
+        loadQuestionsForPlan(currentId);
+      }
+
+      // 2. Restore features tree for Step 2
+      const rawFeats: any[] = p.features || [];
+      const rawSubs: any[] = p.subFeatures || [];
+      if (rawFeats.length > 0) {
+        setFeatures(rawFeats.map(f => ({
+          ...f,
+          subFeatures: rawSubs.filter(s => s.featureId === f.id)
+        })));
+      } else {
+        setFeatures([]);
+      }
+
+      // 3. Restore tasks for Step 3
+      setTasks(p.tasks || []);
+
+      // 4. Calculate highest reached step & active step
+      const hasPrdOrTasks = Boolean(p.generatedPrd || (p.tasks && p.tasks.length > 0));
+      const hasFeatures = Boolean(rawFeats.length > 0);
+
+      if (hasPrdOrTasks) {
+        setMaxStepReached(3);
+        const params = new URLSearchParams(window.location.search);
+        const qStep = parseInt(params.get('step') || '0', 10);
+        if (qStep >= 1 && qStep <= 3) {
+          setStep(qStep);
+        } else {
+          setStep(3);
+        }
+      } else if (hasFeatures) {
+        setMaxStepReached(2);
+        setStep(2);
+      } else {
+        setMaxStepReached(1);
+        setStep(1);
+      }
+
+      // 5. Update browser URL to /project/:id (like ngodingpakeai.com)
+      if (pushHistory) {
+        const targetPath = `/project/${currentId}`;
+        if (window.location.pathname !== targetPath) {
+          window.history.pushState({ planId: currentId }, '', targetPath);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load plan by ID:', e);
+    }
+  };
+
+  // Select an existing plan from sidebar
+  const handleSelectPlan = async (plan: SavedPlan) => {
+    const id = plan.planId || plan.id;
+    await loadPlanById(id, true);
+  };
+
+  // Initial Data Fetching & URL Routing
+  useEffect(() => {
+    // 0. Handle OAuth redirect session_token param in URL if returned from Google
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('session_token');
+      if (token) {
+        document.cookie = `better-auth.session_token=${token}; path=/; max-age=${30 * 86400}; SameSite=Lax`;
+        localStorage.setItem('vibedev_session_token', token);
+        const newUrl = window.location.pathname + (window.location.hash || '');
+        window.history.replaceState({}, document.title, newUrl);
+      }
+    } catch (e) {
+      console.error('Error handling session token from URL:', e);
+    }
+
+    // 1. Fetch User Session & Credits
+    fetchSessionAndCredits();
+
+    // 2. Fetch Saved Plans History
+    fetchSavedPlans();
+
+    // 3. Direct URL access: /project/:id or /p/:id
+    const targetPlanId = getPlanIdFromPath(window.location.pathname);
+    if (targetPlanId) {
+      loadPlanById(targetPlanId, false);
+    }
+
+    // 4. Handle browser back/forward history navigation
+    const handlePopState = () => {
+      const pId = getPlanIdFromPath(window.location.pathname);
+      if (pId) {
+        loadPlanById(pId, false);
+      } else if (window.location.pathname === '/' || window.location.pathname === '') {
+        handleNewProject(false);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Realtime Telemetry Hook: Live sync task changes via SSE & polling when viewing Step 3
+  useEffect(() => {
+    if (step !== 3 || !planId) return;
+
+    let eventSource: EventSource | null = null;
+    let isCancelled = false;
+
+    // 1. Instant Push via Server-Sent Events (SSE)
+    try {
+      eventSource = new EventSource(`/api/plan/${planId}/events`);
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && data.type === 'tasks_updated' && Array.isArray(data.tasks)) {
+            setTasks(data.tasks);
+          }
+        } catch {
+          // ignore parsing error
+        }
+      };
+    } catch (e) {
+      console.warn('SSE connection failed, falling back to polling:', e);
+    }
+
+    // 2. High-reliability polling (every 2.5s) to guarantee zero desync
+    const pollInterval = setInterval(async () => {
+      if (isCancelled) return;
+      try {
+        const res = await fetch(`/api/plan/${planId}/tasks`);
+        if (res.ok) {
+          const d = await res.json();
+          if (d && Array.isArray(d.tasks)) {
+            setTasks(d.tasks);
+          }
+        }
+      } catch {
+        // ignore polling error
+      }
+    }, 2500);
+
+    return () => {
+      isCancelled = true;
+      if (eventSource) eventSource.close();
+      clearInterval(pollInterval);
+    };
+  }, [step, planId]);
 
   // STEP 1: Submit initial idea -> Create plan and fetch 5 questions
   const handleStartIdea = async (e?: React.FormEvent) => {
@@ -327,6 +412,12 @@ export default function App() {
       const newPlanId = pData.planId;
       setPlanId(newPlanId);
       setTitle(pData.plan?.title || idea.slice(0, 45));
+
+      // Push URL to /project/:id immediately (like ngodingpakeai.com)
+      const targetPath = `/project/${newPlanId}`;
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({ planId: newPlanId }, '', targetPath);
+      }
 
       fetchSavedPlans();
 
@@ -527,7 +618,7 @@ export default function App() {
         plans={savedPlans}
         activePlanId={planId}
         onSelectPlan={handleSelectPlan}
-        onNewProject={handleNewProject}
+        onNewProject={() => handleNewProject(true)}
         user={user}
         credits={credits}
         onLogout={handleLogout}
@@ -547,7 +638,7 @@ export default function App() {
           </button>
 
           <div 
-            onClick={handleNewProject}
+            onClick={() => handleNewProject(true)}
             className="flex items-center gap-2 cursor-pointer shrink-0"
             title="Kembali ke Dashboard Utama"
           >
@@ -561,15 +652,36 @@ export default function App() {
             </span>
           </div>
 
-          {/* Active Project Title Pill */}
+          {/* Active Project Title & URL Pill */}
           {title && (
             <div className="hidden lg:flex items-center gap-2 pl-2.5 border-l border-zinc-800/80 min-w-0">
-              <span className="text-xs text-zinc-300 font-medium truncate max-w-[160px] xl:max-w-[240px]">
+              <span className="text-xs text-zinc-300 font-medium truncate max-w-[160px] xl:max-w-[220px]">
                 {title}
               </span>
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800/80 text-zinc-400 border border-zinc-700/50 shrink-0">
                 {step === 1 ? '1. Ide & Kuis' : step === 2 ? '2. PRD Spec' : '3. Dokumen PRD + Task'}
               </span>
+              {planId && (
+                <button
+                  type="button"
+                  onClick={handleCopyProjectUrl}
+                  className="flex items-center gap-1 text-[11px] font-mono text-zinc-400 hover:text-white px-2 py-0.5 rounded-md bg-[#18181b] border border-zinc-800 hover:border-zinc-700 transition-colors cursor-pointer shrink-0"
+                  title="Klik untuk menyalin link /project/:id"
+                >
+                  {copiedUrl ? (
+                    <>
+                      <Check className="w-3 h-3 text-emerald-400" />
+                      <span className="text-emerald-400 text-[10px] font-sans">Tersalin!</span>
+                    </>
+                  ) : (
+                    <>
+                      <LinkIcon className="w-3 h-3 text-[#ff5c20]" />
+                      <span className="text-[10px] text-zinc-400">/project/{planId}</span>
+                      <Copy className="w-2.5 h-2.5 text-zinc-500 hover:text-zinc-300 ml-0.5" />
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -680,12 +792,48 @@ export default function App() {
             ) : (
               /* If questions are ready, display the 5 questions questionnaire */
               <div className="w-full max-w-3xl mx-auto space-y-6">
-                <div className="border-b border-[#27272a] pb-4">
-                  <span className="text-xs font-mono uppercase tracking-wider text-[#ff5c20] font-bold">Tahap 1: Ide &amp; Kuis</span>
-                  <h2 className="text-2xl font-bold text-white mt-1">Kuesioner Klarifikasi Arsitektur</h2>
-                  <p className="text-xs text-zinc-400 mt-1">
-                    Jawab 5 pertanyaan terarah di bawah atau klik pill rekomendasi agar modul arsitektur dan PRD presisi.
-                  </p>
+                <div className="border-b border-[#27272a] pb-4 flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono uppercase tracking-wider text-[#ff5c20] font-bold">Tahap 1: Ide &amp; Kuis</span>
+                      {title && (
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700/60 font-medium">
+                          {title}
+                        </span>
+                      )}
+                    </div>
+                    <h2 className="text-2xl font-bold text-white mt-1">Kuesioner Klarifikasi Arsitektur</h2>
+                    {idea ? (
+                      <p className="text-xs text-zinc-400 mt-1 max-w-xl">
+                        Ide Proyek: <span className="text-zinc-200 font-medium">"{idea}"</span>
+                      </p>
+                    ) : (
+                      <p className="text-xs text-zinc-400 mt-1">
+                        Jawab 5 pertanyaan terarah di bawah atau klik pill rekomendasi agar modul arsitektur dan PRD presisi.
+                      </p>
+                    )}
+                  </div>
+
+                  {planId && (
+                    <button
+                      type="button"
+                      onClick={handleCopyProjectUrl}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#18181b] border border-zinc-700/70 text-xs text-zinc-300 hover:text-white hover:border-zinc-500 transition-colors cursor-pointer shrink-0 self-start sm:self-center"
+                      title="Salin URL proyek ini"
+                    >
+                      {copiedUrl ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-400 font-medium">URL Tersalin!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-[#ff5c20]" />
+                          <span>Salin Link Proyek</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
 
                 <div className="space-y-6">
@@ -743,31 +891,43 @@ export default function App() {
                 {/* Primary CTA */}
                 <div className="flex items-center justify-between pt-4 border-t border-[#27272a]">
                   <button
-                    onClick={() => {
-                      setQuestions([]);
-                    }}
+                    onClick={() => handleNewProject(true)}
                     className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors cursor-pointer"
                   >
-                    <ArrowLeft className="w-3.5 h-3.5" /> Ganti Ide
+                    <ArrowLeft className="w-3.5 h-3.5" /> Buat Proyek Baru
                   </button>
 
-                  <button
-                    onClick={handleGeneratePRDSpec}
-                    disabled={loadingSpec}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold shadow-lg shadow-[#ff5c20]/25 transition-all cursor-pointer disabled:opacity-50"
-                  >
-                    {loadingSpec ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        <span>Menganalisis Spesifikasi Modul...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>Lanjut ke PRD Spec (Struktur Fitur)</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </>
+                  <div className="flex items-center gap-2.5">
+                    {/* If user already has features / spec generated, provide direct view button */}
+                    {maxStepReached >= 2 && (
+                      <button
+                        type="button"
+                        onClick={() => setStep(2)}
+                        className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold border border-zinc-700/60 transition-all cursor-pointer"
+                      >
+                        <span>Lihat PRD Spec</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
                     )}
-                  </button>
+
+                    <button
+                      onClick={handleGeneratePRDSpec}
+                      disabled={loadingSpec}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#ff5c20] hover:bg-[#e04f18] text-white text-xs font-bold shadow-lg shadow-[#ff5c20]/25 transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      {loadingSpec ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          <span>Menganalisis Spesifikasi Modul...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>{maxStepReached >= 2 ? 'Perbarui & Regenerate Spec' : 'Lanjut ke PRD Spec (Struktur Fitur)'}</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -816,6 +976,18 @@ export default function App() {
                   </button>
                 </div>
 
+                {/* If Dokumen PRD already exists, show direct button to view it */}
+                {maxStepReached >= 3 && prdMarkdown && (
+                  <button
+                    type="button"
+                    onClick={() => setStep(3)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold border border-zinc-700/60 transition-all cursor-pointer"
+                  >
+                    <span>Lihat Dokumen PRD</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
                 <button
                   onClick={handleGeneratePRDAndTasks}
                   disabled={loadingFinalPipeline}
@@ -828,7 +1000,7 @@ export default function App() {
                     </>
                   ) : (
                     <>
-                      <span>Generate Dokumen PRD &amp; Task</span>
+                      <span>{maxStepReached >= 3 ? 'Regenerate Dokumen PRD' : 'Generate Dokumen PRD & Task'}</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
@@ -850,7 +1022,13 @@ export default function App() {
                 idea={idea}
                 viewMode={specViewMode}
                 onViewModeChange={setSpecViewMode}
-                onContinue={handleGeneratePRDAndTasks} 
+                onContinue={() => {
+                  if (prdMarkdown) {
+                    setStep(3);
+                  } else {
+                    handleGeneratePRDAndTasks();
+                  }
+                }} 
               />
             )}
           </div>

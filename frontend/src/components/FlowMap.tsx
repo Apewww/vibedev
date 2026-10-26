@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react';
 import { 
   Box, CheckCircle2, ArrowRight,
   Cpu, Plus, Minus, Maximize2,
@@ -122,10 +122,65 @@ export const FlowMap: React.FC<FlowMapProps> = ({
   const FEAT_X = 420;
   const SUB_X = 820;
   const NODE_W = 260;
-  const ROW_GAP = 180;
+  const ROW_GAP = 185;
 
   const totalRows = Math.max(features.length, 3);
   const rootCenterY = Math.max(120, (totalRows * ROW_GAP) / 2 - 35);
+
+  // Refs for precise dynamic anchor measurement (eliminates visual line disconnects)
+  const rootRef = useRef<HTMLDivElement>(null);
+  const featRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const subRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  // State to hold precise vertical anchor positions (Y-centers of connection ports)
+  const [anchors, setAnchors] = useState<{
+    rootY: number;
+    featY: number[];
+    subY: number[];
+  }>(() => ({
+    rootY: rootCenterY + 54,
+    featY: features.map((_, i) => 40 + i * ROW_GAP + 69),
+    subY: features.map((f, i) => 40 + i * ROW_GAP + ((f.subFeatures?.length || 0) <= 2 ? 69 : 69))
+  }));
+
+  // Re-measure exact node handle centers whenever nodes render, font scales, or window resizes
+  const measureAnchors = useCallback(() => {
+    const rootY = rootRef.current
+      ? rootRef.current.offsetTop + rootRef.current.offsetHeight / 2
+      : rootCenterY + 54;
+
+    const featY = features.map((_, i) => {
+      const el = featRefs.current[i];
+      return el ? el.offsetTop + el.offsetHeight / 2 : 40 + i * ROW_GAP + 69;
+    });
+
+    const subY = features.map((_, i) => {
+      const el = subRefs.current[i];
+      if (el) {
+        return el.offsetTop + el.offsetHeight / 2;
+      }
+      return featY[i] ?? (40 + i * ROW_GAP + 69);
+    });
+
+    setAnchors({ rootY, featY, subY });
+  }, [features, rootCenterY, ROW_GAP]);
+
+  useLayoutEffect(() => {
+    measureAnchors();
+  }, [measureAnchors]);
+
+  useEffect(() => {
+    const handleResize = () => measureAnchors();
+    window.addEventListener('resize', handleResize);
+    const ro = new ResizeObserver(() => measureAnchors());
+    if (canvasRef.current) {
+      ro.observe(canvasRef.current);
+    }
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      ro.disconnect();
+    };
+  }, [measureAnchors]);
 
   return (
     <div className="w-full space-y-3 animate-in fade-in duration-300">
@@ -186,7 +241,7 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                 height: `${Math.max(800, totalRows * ROW_GAP + 200)}px`
               }}
             >
-              {/* Dynamic Curved SVG Connecting Edges */}
+              {/* Dynamic Curved SVG Connecting Edges - Pixel-Perfect Handle Anchors */}
               <svg 
                 className="absolute inset-0 pointer-events-none overflow-visible"
                 style={{ width: '100%', height: '100%' }}
@@ -194,31 +249,25 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                 <defs>
                   {/* Linear Gradient for Edge Connectors */}
                   <linearGradient id="edgeGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#ff5c20" stopOpacity="0.8" />
-                    <stop offset="100%" stopColor="#ff7a45" stopOpacity="0.4" />
+                    <stop offset="0%" stopColor="#ff5c20" stopOpacity="0.9" />
+                    <stop offset="100%" stopColor="#ff7a45" stopOpacity="0.7" />
                   </linearGradient>
 
-                  {/* Marker Arrow */}
-                  <marker
-                    id="arrowhead"
-                    markerWidth="6"
-                    markerHeight="6"
-                    refX="5"
-                    refY="3"
-                    orient="auto"
-                  >
-                    <polygon points="0 0, 6 3, 0 6" fill="#ff5c20" opacity="0.7" />
-                  </marker>
+                  {/* Glow filter for active connector */}
+                  <filter id="edgeGlow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feGaussianBlur stdDeviation="3" result="blur" />
+                    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                  </filter>
                 </defs>
 
                 {/* Edges from Root to Feature Nodes */}
                 {features.map((_feat, idx) => {
                   const x1 = ROOT_X + NODE_W;
-                  const y1 = rootCenterY + 45;
+                  const y1 = anchors.rootY;
                   const x2 = FEAT_X;
-                  const y2 = 40 + idx * ROW_GAP + 45;
+                  const y2 = anchors.featY[idx] ?? (40 + idx * ROW_GAP + 69);
 
-                  const dx = (x2 - x1) * 0.55;
+                  const dx = (x2 - x1) * 0.52;
                   const pathData = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 
                   const isHighlighted = selectedNode?.featureIndex === idx;
@@ -231,17 +280,19 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                           d={pathData}
                           fill="none"
                           stroke="#ff5c20"
-                          strokeWidth="4"
-                          strokeOpacity="0.3"
+                          strokeWidth="5"
+                          strokeOpacity="0.35"
+                          strokeLinecap="round"
+                          filter="url(#edgeGlow)"
                         />
                       )}
                       <path
                         d={pathData}
                         fill="none"
-                        stroke={isHighlighted ? "#ff5c20" : "rgba(161, 161, 170, 0.25)"}
-                        strokeWidth={isHighlighted ? "2" : "1.5"}
-                        strokeDasharray={isHighlighted ? undefined : "4 4"}
-                        markerEnd="url(#arrowhead)"
+                        stroke={isHighlighted ? "#ff5c20" : "rgba(161, 161, 170, 0.3)"}
+                        strokeWidth={isHighlighted ? "2.5" : "1.5"}
+                        strokeDasharray={isHighlighted ? undefined : "5 5"}
+                        strokeLinecap="round"
                       />
                     </g>
                   );
@@ -251,21 +302,35 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                 {features.map((feat, idx) => {
                   if (!feat.subFeatures || feat.subFeatures.length === 0) return null;
                   const x1 = FEAT_X + NODE_W;
-                  const y1 = 40 + idx * ROW_GAP + 45;
+                  const y1 = anchors.featY[idx] ?? (40 + idx * ROW_GAP + 69);
                   const x2 = SUB_X;
-                  const y2 = y1;
+                  const y2 = anchors.subY[idx] ?? y1;
 
                   const isHighlighted = selectedNode?.featureIndex === idx;
+                  const dx = (x2 - x1) * 0.5;
+                  const pathData = Math.abs(y1 - y2) < 2
+                    ? `M ${x1} ${y1} L ${x2} ${y2}`
+                    : `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 
                   return (
                     <g key={`edge-sub-${idx}`}>
+                      {isHighlighted && (
+                        <path
+                          d={pathData}
+                          fill="none"
+                          stroke="#ff5c20"
+                          strokeWidth="4"
+                          strokeOpacity="0.3"
+                          strokeLinecap="round"
+                        />
+                      )}
                       <path
-                        d={`M ${x1} ${y1} L ${x2} ${y2}`}
+                        d={pathData}
                         fill="none"
-                        stroke={isHighlighted ? "#ff5c20" : "rgba(161, 161, 170, 0.25)"}
-                        strokeWidth="1.5"
-                        strokeDasharray="3 3"
-                        markerEnd="url(#arrowhead)"
+                        stroke={isHighlighted ? "#ff5c20" : "rgba(161, 161, 170, 0.3)"}
+                        strokeWidth={isHighlighted ? "2" : "1.5"}
+                        strokeDasharray={isHighlighted ? "3 3" : "4 4"}
+                        strokeLinecap="round"
                       />
                     </g>
                   );
@@ -276,6 +341,7 @@ export const FlowMap: React.FC<FlowMapProps> = ({
               {/* NODE 1: PERENCANAAN (Root / PRD Node)                */}
               {/* ---------------------------------------------------- */}
               <div
+                ref={rootRef}
                 onClick={() => setSelectedNode({ type: 'root' })}
                 style={{
                   position: 'absolute',
@@ -316,7 +382,11 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                 </div>
 
                 {/* Connection Output Handle Dot */}
-                <div className="absolute -right-1.5 top-1/2 -translate-y-1/2 size-3 rounded-full bg-[#ff5c20] border-2 border-[#121215] shadow-sm shadow-[#ff5c20]/50" />
+                <div className={`absolute -right-1.5 top-1/2 -translate-y-1/2 size-3.5 rounded-full border-2 border-[#121215] z-10 transition-all ${
+                  selectedNode?.type === 'root'
+                    ? 'bg-[#ff5c20] ring-2 ring-[#ff5c20]/50 scale-110 shadow-md shadow-[#ff5c20]'
+                    : 'bg-[#ff5c20] shadow-sm shadow-[#ff5c20]/60'
+                }`} />
               </div>
 
               {/* ---------------------------------------------------- */}
@@ -331,6 +401,7 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                 return (
                   <div
                     key={`feat-node-${feat.id || idx}`}
+                    ref={el => { featRefs.current[idx] = el; }}
                     onClick={() => setSelectedNode({ type: 'feature', featureIndex: idx })}
                     style={{
                       position: 'absolute',
@@ -345,7 +416,11 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                     }`}
                   >
                     {/* Input Connection Handle Dot */}
-                    <div className="absolute -left-1.5 top-1/2 -translate-y-1/2 size-3 rounded-full bg-[#ff5c20] border-2 border-[#121215]" />
+                    <div className={`absolute -left-1.5 top-1/2 -translate-y-1/2 size-3.5 rounded-full border-2 border-[#121215] z-10 transition-all ${
+                      isSelected
+                        ? 'bg-[#ff5c20] ring-2 ring-[#ff5c20]/60 scale-110 shadow-md shadow-[#ff5c20]'
+                        : 'bg-[#ff5c20] shadow-sm shadow-[#ff5c20]/40'
+                    }`} />
 
                     {/* Top Phase Tag */}
                     <div className="flex items-center justify-between mb-1.5">
@@ -384,7 +459,11 @@ export const FlowMap: React.FC<FlowMapProps> = ({
 
                     {/* Output Connection Handle Dot */}
                     {subCount > 0 && (
-                      <div className="absolute -right-1.5 top-1/2 -translate-y-1/2 size-3 rounded-full bg-[#ff5c20] border-2 border-[#121215] shadow-sm shadow-[#ff5c20]/50" />
+                      <div className={`absolute -right-1.5 top-1/2 -translate-y-1/2 size-3.5 rounded-full border-2 border-[#121215] z-10 transition-all ${
+                        isSelected
+                          ? 'bg-[#ff5c20] ring-2 ring-[#ff5c20]/60 scale-110 shadow-md shadow-[#ff5c20]'
+                          : 'bg-[#ff5c20] shadow-sm shadow-[#ff5c20]/40'
+                      }`} />
                     )}
                   </div>
                 );
@@ -401,49 +480,57 @@ export const FlowMap: React.FC<FlowMapProps> = ({
                 return (
                   <div
                     key={`sub-node-${feat.id || idx}`}
+                    ref={el => { subRefs.current[idx] = el; }}
                     onClick={() => setSelectedNode({ type: 'feature', featureIndex: idx })}
                     style={{
                       position: 'absolute',
                       left: `${SUB_X}px`,
                       top: `${topPos}px`,
-                      width: '280px'
+                      width: '280px',
+                      minHeight: '138px'
                     }}
-                    className={`interactive-node cursor-pointer rounded-2xl border p-3 bg-[#16161a] shadow-md transition-all duration-200 hover:scale-[1.01] ${
+                    className={`interactive-node cursor-pointer rounded-2xl border p-3.5 bg-[#16161a] shadow-md transition-all duration-200 hover:scale-[1.01] flex flex-col justify-between ${
                       isSelected
-                        ? 'border-[#ff5c20]/60 ring-1 ring-[#ff5c20]/20'
+                        ? 'border-[#ff5c20]/70 ring-1 ring-[#ff5c20]/30 shadow-lg shadow-[#ff5c20]/10'
                         : 'border-[#27272a] hover:border-zinc-700'
                     }`}
                   >
                     {/* Input Connection Handle Dot */}
-                    <div className="absolute -left-1.5 top-1/2 -translate-y-1/2 size-3 rounded-full bg-[#ff5c20] border-2 border-[#16161a]" />
+                    <div className={`absolute -left-1.5 top-1/2 -translate-y-1/2 size-3.5 rounded-full border-2 border-[#16161a] z-10 transition-all ${
+                      isSelected
+                        ? 'bg-[#ff5c20] ring-2 ring-[#ff5c20]/60 scale-110 shadow-md shadow-[#ff5c20]'
+                        : 'bg-[#ff5c20] shadow-sm shadow-[#ff5c20]/40'
+                    }`} />
 
-                    {/* Header */}
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 font-bold flex items-center gap-1">
-                        <Cpu className="w-3 h-3 text-[#ff5c20]" />
-                        Sub-Fitur Eksekusi
-                      </span>
-                      <span className="text-[10px] font-mono text-zinc-500">
-                        {feat.subFeatures.length} item
-                      </span>
-                    </div>
-
-                    {/* Sub-features list */}
-                    <div className="space-y-1.5">
-                      {feat.subFeatures.slice(0, 3).map((sub, sIdx) => (
-                        <div 
-                          key={sub.id || sIdx}
-                          className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[#111113] border border-zinc-800/80 text-[11px]"
-                        >
-                          <span className="size-1.5 rounded-full bg-[#ff5c20] shrink-0" />
-                          <span className="truncate text-zinc-200 font-medium">{sub.name}</span>
-                        </div>
-                      ))}
-                      {feat.subFeatures.length > 3 && (
-                        <span className="text-[10px] text-zinc-500 pl-2 block font-mono">
-                          +{feat.subFeatures.length - 3} sub-fitur lainnya...
+                    <div>
+                      {/* Header */}
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-mono uppercase tracking-wider text-zinc-400 font-bold flex items-center gap-1">
+                          <Cpu className="w-3 h-3 text-[#ff5c20]" />
+                          Sub-Fitur Eksekusi
                         </span>
-                      )}
+                        <span className="text-[10px] font-mono text-zinc-500">
+                          {feat.subFeatures.length} item
+                        </span>
+                      </div>
+
+                      {/* Sub-features list */}
+                      <div className="space-y-1.5">
+                        {feat.subFeatures.slice(0, 3).map((sub, sIdx) => (
+                          <div 
+                            key={sub.id || sIdx}
+                            className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[#111113] border border-zinc-800/80 text-[11px]"
+                          >
+                            <span className="size-1.5 rounded-full bg-[#ff5c20] shrink-0" />
+                            <span className="truncate text-zinc-200 font-medium">{sub.name}</span>
+                          </div>
+                        ))}
+                        {feat.subFeatures.length > 3 && (
+                          <span className="text-[10px] text-zinc-500 pl-2 block font-mono">
+                            +{feat.subFeatures.length - 3} sub-fitur lainnya...
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );

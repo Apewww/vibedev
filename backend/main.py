@@ -237,6 +237,7 @@ async def create_plan(body: PlanCreate):
         "createdAt": int(time.time()),
         "techStack": {"frontend": "ai-pilih", "backend": "ai-pilih", "database": "ai-pilih", "deployment": "ai-pilih"},
         "extras": [],
+        "questions": [],
         "questionAnswers": {},
         "generatedPrd": None,
         "features": [],
@@ -249,12 +250,67 @@ async def create_plan(body: PlanCreate):
     save_db(db)
     return {"planId": plan_id, "plan": plan_obj}
 
+DEFAULT_CLARIFYING_QUESTIONS = [
+    {
+        "id": "target_user",
+        "question": "Siapa target pengguna spesifik dan problem utama yang ingin diselesaikan di MVP?",
+        "suggestions": [
+            "First-jobber/fresh graduate yang sulit melacak pengeluaran harian dan overspending",
+            "Freelancer dengan cashflow tidak menentu yang butuh pemisahan uang pribadi vs kerja",
+            "Pasangan muda yang butuh shared budgeting dan pelacakan pengeluaran rumah tangga",
+            "Masyarakat umum yang malas mencatat manual karena form terlalu rumit"
+        ]
+    },
+    {
+        "id": "core_flow",
+        "question": "Bagaimana alur utama pencatatan transaksi dan fitur diferensiasi produk?",
+        "suggestions": [
+            "Input manual super cepat (< 3 detik) dengan auto-suggest kategori berbasis riwayat",
+            "Foto struk belanja via kamera dengan OCR parsing & auto-kategorisasi",
+            "Kirim pesan/voice note transaksi lewat bot WhatsApp/Telegram tanpa buka app"
+        ]
+    },
+    {
+        "id": "auth_roles",
+        "question": "Metode login dan tingkatan hak akses (role) pengguna apa yang dibutuhkan?",
+        "suggestions": [
+            "Login Google OAuth 2.0 (Single User tanpa ribet verifikasi password)",
+            "Email & Password dengan fitur reset password dan Magic Link",
+            "Multi-user role: Admin/Pemilik Akun & Viewer/Anggota Keluarga"
+        ]
+    },
+    {
+        "id": "integrations",
+        "question": "Layanan pihak ketiga, payment gateway, atau API eksternal apa yang akan diintegrasikan?",
+        "suggestions": [
+            "Payment Gateway otomatis (QRIS / Midtrans / Xendit)",
+            "WhatsApp Business Cloud API untuk notifikasi pengingat & ringkasan mingguan",
+            "Cloud Storage (AWS S3 / Supabase Storage) untuk bukti struk/attachment"
+        ]
+    },
+    {
+        "id": "scale_infra",
+        "question": "Estimasi target kapasitas pengguna awal dan kebutuhan keamanan data khusus?",
+        "suggestions": [
+            "MVP awal < 1.000 pengguna aktif dengan database PostgreSQL single instance",
+            "Target skala menengah (>10k user) butuh Redis cache + asynchronous worker",
+            "Wajib enkripsi data transaksi sensitif & backup otomatis berkala"
+        ]
+    }
+]
+
 @app.get("/api/plan/{plan_id}")
 async def get_plan(plan_id: str):
     db = load_db()
     if plan_id not in db["plans"]:
         raise HTTPException(status_code=404, detail="Plan not found")
     plan = db["plans"][plan_id]
+    
+    # If questions not present for an existing plan, populate with standard defaults
+    if not plan.get("questions") or len(plan.get("questions", [])) == 0:
+        plan["questions"] = DEFAULT_CLARIFYING_QUESTIONS
+        save_db(db)
+
     return {
         "plan": plan,
         "documents": [{"version": 1, "content": plan.get("generatedPrd") or ""}] if plan.get("generatedPrd") else [],
@@ -281,10 +337,15 @@ async def connect_workspace(plan_id: str):
 @app.post("/api/plan/questions")
 async def generate_questions(body: QuestionsRequest, request: Request):
     db = load_db()
-    check_user_credits(request, db, consume=True)
     plan = db["plans"].get(body.planId)
     if not plan:
         raise HTTPException(status_code=404, detail="Plan not found")
+    
+    # If plan already has questions saved, return them immediately without re-consuming user quota
+    if plan.get("questions") and len(plan["questions"]) > 0:
+        return {"questions": plan["questions"]}
+
+    check_user_credits(request, db, consume=True)
     
     idea = plan.get("idea", "")
     lang = plan.get("language", "id")
@@ -334,39 +395,19 @@ Gunakan Bahasa Indonesia.
 """
 
     content = call_llm([{"role": "user", "content": prompt}], response_json=True)
+    q_list = []
     try:
         data = json.loads(content)
-        return {"questions": data.get("questions", [])}
+        q_list = data.get("questions", [])
     except Exception:
-        return {
-            "questions": [
-                {
-                    "id": "target_user",
-                    "question": "Siapa target pengguna utama aplikasi ini?",
-                    "suggestions": ["Mahasiswa & pekerja muda", "Pelaku UMKM / toko online", "Pengguna umum sehari-hari"]
-                },
-                {
-                    "id": "core_flow",
-                    "question": "Bagaimana alur utama interaksi pengguna dalam aplikasi?",
-                    "suggestions": ["Kirim pesan teks atau foto struk lalu bot mencatat otomatis", "Buka web dashboard dan isi form pengeluaran", "Notifikasi pengingat terjadwal via chat"]
-                },
-                {
-                    "id": "auth_roles",
-                    "question": "Metode autentikasi dan tingkatan hak akses apa yang dibutuhkan?",
-                    "suggestions": ["Verifikasi nomor WhatsApp (OTP / nomor WA)", "Login Google OAuth 2.0", "Role: Admin toko & Kasir"]
-                },
-                {
-                    "id": "integrations",
-                    "question": "Layanan eksternal atau API apa yang harus terhubung?",
-                    "suggestions": ["Meta WhatsApp Cloud API", "Payment Gateway (QRIS / Midtrans)", "AI Vision OCR untuk baca struk belanja"]
-                },
-                {
-                    "id": "scale_infra",
-                    "question": "Berapa target pengguna awal dan apakah ada kebutuhan keamanan data khusus?",
-                    "suggestions": ["Kapasitas 1.000 pengguna pertama, database Postgres", "Skala besar (>10.000 user) butuh worker asynchronous", "Enkripsi data transaksi pribadi"]
-                }
-            ]
-        }
+        q_list = DEFAULT_CLARIFYING_QUESTIONS
+    
+    if not q_list:
+        q_list = DEFAULT_CLARIFYING_QUESTIONS
+
+    plan["questions"] = q_list
+    save_db(db)
+    return {"questions": q_list}
 
 @app.post("/api/plan/roadmap/generate")
 async def start_roadmap(request: Request):
@@ -479,18 +520,29 @@ Pohon Modul Fitur: __FEATURES__
 
 ATURAN FORMAT DOKUMEN (SANGAT PENTING):
 1. Wajib gunakan format Heading Markdown resmi: # untuk Judul Utama (# PRD — __TITLE__), ## untuk Bab (Level 2), ### untuk Sub-bab (Level 3).
-2. Setiap butir poin list (-) WAJIB ditulis pada baris baru terpisah (DILARANG menggabungkan beberapa tanda '-' dalam satu paragraf/baris).
-3. Gunakan Tabel Markdown (GFM Table) yang rapi untuk Requirements Matrix (Kode FR, Modul, Deskripsi Kebutuhan, Prioritas), Skema Database, dan Endpoint API.
-4. Gunakan diagram Mermaid yang valid (Sequence Diagram & ER Diagram).
+2. Setiap paragraf dan heading WAJIB dipisahkan oleh DUA kali ganti baris (baris kosong ganda \n\n) agar tidak menempel atau berdempetan.
+3. Setiap butir poin list (-) WAJIB ditulis pada baris baru terpisah dengan awalan bold: - **Nama Poin**: Penjelasan detail.
+4. Gunakan Tabel Markdown (GFM Table) yang rapi untuk Requirements Matrix (Kode FR, Modul, Deskripsi Kebutuhan, Prioritas, Acceptance Criteria), Skema Database, dan Endpoint API.
+5. Gunakan diagram Mermaid yang valid (Sequence Diagram & ER Diagram).
 
 Wajib ikuti struktur 7 bab standar berikut secara presisi:
 # PRD — __TITLE__
 
 ## 1. Overview
-- **Ringkasan Eksekutif**: Ringkasan produk dan target pengguna.
-- **Latar Belakang Masalah**: Masalah nyata yang diselesaikan.
-- **Nilai Proposisi**: Keunggulan kompetitif unik.
-- **Tujuan Utama**: Metrik keberhasilan aplikasi.
+
+### 1.1 Ringkasan Eksekutif
+Penjelasan komprehensif mengenai produk, visi sistem, target persona pengguna utama, dan solusi inti yang ditawarkan.
+
+### 1.2 Latar Belakang Masalah
+Masalah nyata dan kendala yang dihadapi pengguna saat ini yang menjadi dasar dibangunnya aplikasi ini.
+
+### 1.3 Nilai Proposisi Unik
+Keunggulan kompetitif dan proposisi nilai yang membedakan sistem ini dengan solusi alternatif yang sudah ada di pasar.
+
+### 1.4 Tujuan Utama & Target Metrik
+- **Target Kecepatan Interaksi**: Target latensi interaksi atau durasi penyelesaian tugas utama pengguna.
+- **Target Retensi & Kepuasan**: Target adopsi pengguna (misal: rasio retensi D30 atau kepuasan pengguna).
+- **Integritas & Akurasi Data**: Standar keandalan, toleransi nol untuk ketidakkonsistenan data.
 
 ## 2. Requirements
 ### 2.1 Kebutuhan Fungsional
